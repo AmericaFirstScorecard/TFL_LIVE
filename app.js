@@ -93,6 +93,8 @@
     lastMvpRecords: [],
     lastStandings: [],
     newsRecords: [],
+    rosterMap: new Map(),
+    playersByTeam: new Map(),
     standingsLookup: new Map(),
     lastMatchup: null,
     lastIsFinal: null,
@@ -120,6 +122,7 @@
     cacheEls();
     initTabs();
     initChart();
+    initDetailOverlay();
 
     // Debug: proves what your deployed JS is using
     console.info("[TFL] MATCHUP_CSV_URL =", MATCHUP_CSV_URL);
@@ -206,6 +209,15 @@
     els.bracketStatus = id("bracketStatus");
     els.bracketLoading = id("bracketLoading");
     els.bracketError = id("bracketError");
+
+    els.detailOverlay = id("detailOverlay");
+    els.detailClose = id("detailClose");
+    els.detailTitle = id("detailTitle");
+    els.detailSubtitle = id("detailSubtitle");
+    els.detailRecord = id("detailRecord");
+    els.teamSummary = id("teamSummary");
+    els.teamPlayers = id("teamPlayers");
+    els.playerDetail = id("playerDetail");
   }
 
   function initTabs() {
@@ -368,6 +380,19 @@
     });
   }
 
+  function initDetailOverlay() {
+    const closeOverlay = () => {
+      if (els.detailOverlay) els.detailOverlay.hidden = true;
+    };
+    els.detailClose?.addEventListener("click", closeOverlay);
+    els.detailOverlay?.addEventListener("click", (e) => {
+      if (e.target === els.detailOverlay || e.target.classList.contains("overlay__backdrop")) closeOverlay();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeOverlay();
+    });
+  }
+
   // =======================
   // NETWORK
   // =======================
@@ -456,9 +481,11 @@
 
     try {
       const buffer = await fetchArrayBuffer(url);
-      const { mvpRecords, standings, news } = parseMvpWorkbook(buffer);
+      const { mvpRecords, standings, news, roster } = parseMvpWorkbook(buffer);
       state.lastMvpRecords = mvpRecords;
       state.lastStandings = standings;
+      state.rosterMap = roster;
+      state.playersByTeam = buildPlayersByTeam(mvpRecords);
       state.standingsLookup = buildStandingsLookup(standings);
       renderMvp(mvpRecords);
       renderStandings(standings);
@@ -475,6 +502,8 @@
       showError(els.mvpError, `MVP feed error: ${err.message}`);
       state.lastMvpRecords = buildSampleMvp();
       state.lastStandings = buildSampleStandings();
+      state.rosterMap = new Map();
+      state.playersByTeam = buildPlayersByTeam(state.lastMvpRecords);
       state.standingsLookup = buildStandingsLookup(state.lastStandings);
       renderMvp(state.lastMvpRecords);
       renderStandings(state.lastStandings);
@@ -697,72 +726,82 @@
     const defense = parseDefenseSheet(workbook);
     const news = parseNewsSheet(workbook);
 
-    const players = new Map();
-    const ensure = (name) => {
-      if (!players.has(name)) players.set(name, { player: name });
-      return players.get(name);
-    };
+  const players = new Map();
+  const ensure = (name) => {
+    if (!players.has(name)) players.set(name, { player: name });
+    return players.get(name);
+  };
 
-    passing.forEach((p) => {
-      const rec = ensure(p.player);
-      Object.assign(rec, {
-        team: rec.team || roster.get(p.player) || p.team,
-        passRating: p.passRating,
-        compPct: p.compPct,
-        yards: p.yards,
-        passTd: p.passTd,
-        interceptions: p.interceptions,
+  passing.forEach((p) => {
+    const rec = ensure(p.player);
+    Object.assign(rec, {
+      team: rec.team || roster.get(p.player)?.team || p.team,
+      image: rec.image || roster.get(p.player)?.image || null,
+      passRating: p.passRating,
+      compPct: p.compPct,
+      yards: p.yards,
+      passTd: p.passTd,
+      interceptions: p.interceptions,
         completions: p.completions,
         attempts: p.attempts,
       });
     });
 
-    rushing.forEach((r) => {
-      const rec = ensure(r.player);
-      Object.assign(rec, {
-        team: rec.team || roster.get(r.player) || r.team,
-        rushYards: r.rushYards,
-        rushTd: r.rushTd,
-        returnTd: r.returnTd,
-        totalTd: r.totalTd,
-      });
+  rushing.forEach((r) => {
+    const rec = ensure(r.player);
+    Object.assign(rec, {
+      team: rec.team || roster.get(r.player)?.team || r.team,
+      image: rec.image || roster.get(r.player)?.image || null,
+      rushYards: r.rushYards,
+      rushTd: r.rushTd,
+      returnTd: r.returnTd,
+      totalTd: r.totalTd,
+    });
     });
 
-    receiving.forEach((r) => {
-      const rec = ensure(r.player);
-      Object.assign(rec, {
-        team: rec.team || roster.get(r.player) || r.team,
-        recvYards: r.recvYards,
-        recvTd: r.recvTd,
-        catches: r.catches,
-        targets: r.targets,
-      });
+  receiving.forEach((r) => {
+    const rec = ensure(r.player);
+    Object.assign(rec, {
+      team: rec.team || roster.get(r.player)?.team || r.team,
+      image: rec.image || roster.get(r.player)?.image || null,
+      recvYards: r.recvYards,
+      recvTd: r.recvTd,
+      catches: r.catches,
+      targets: r.targets,
+    });
     });
 
     defense.forEach((d) => {
       const rec = ensure(d.player);
       Object.assign(rec, {
-        team: rec.team || roster.get(d.player) || d.team,
-        tackles: d.tackles,
-        defInt: d.interceptions,
-        sacks: d.sacks,
-        defTd: d.defTd,
-      });
+        team: rec.team || roster.get(d.player)?.team || d.team,
+        image: rec.image || roster.get(d.player)?.image || null,
+      tackles: d.tackles,
+      defInt: d.interceptions,
+      sacks: d.sacks,
+      defTd: d.defTd,
+    });
+    });
+
+    roster.forEach((info, name) => {
+      const rec = ensure(name);
+      rec.team = rec.team || info.team;
+      rec.image = rec.image || info.image || null;
     });
 
     const standingsMap = buildStandingsLookup(standings);
 
-    const records = Array.from(players.values())
-      .map((rec) => {
-        const standing = lookupStanding(standingsMap, rec.team || roster.get(rec.player));
-        const wins = standing?.wins ?? 0;
-        const winPct = standing?.winPct ?? null;
+  const records = Array.from(players.values())
+    .map((rec) => {
+      const standing = lookupStanding(standingsMap, rec.team || roster.get(rec.player)?.team);
+      const wins = standing?.wins ?? 0;
+      const winPct = standing?.winPct ?? null;
 
         const { score: mvpScore, defScore } = computeMvpScore(rec, wins);
 
         return {
           ...rec,
-          team: roster.get(rec.player) || rec.team || "Team",
+          team: roster.get(rec.player)?.team || rec.team || "Team",
           winPct,
           wins,
           defScore,
@@ -899,7 +938,17 @@
     rows.forEach((row) => {
       const player = String(row.Player || row.player || "").trim();
       const team = String(row.Team || row.team || "").trim();
-      if (player && team) map.set(player, team);
+      const image = String(
+        row.Image ||
+          row.image ||
+          row["Image URL"] ||
+          row["Image Link"] ||
+          row["Image link"] ||
+          row.Photo ||
+          row.photo ||
+          ""
+      ).trim();
+      if (player && team) map.set(player, { team, image: image || null });
     });
     return map;
   }
@@ -1084,7 +1133,7 @@
       tr.innerHTML = `
         <td>
           <div class="player">
-            <div class="player__avatar">${initials(row.player)}</div>
+            ${playerAvatar(row)}
             <div>
               <div>${escapeHtml(row.player)}</div>
               <div class="details">MVP Score: ${formatScore(row.mvpScore)}</div>
@@ -1147,6 +1196,7 @@
     rows.forEach((row) => {
       const tr = document.createElement("tr");
       const teamInfo = resolveTeam(row.team);
+      const teamKey = canonicalTeamKey(teamInfo.canonicalKey || teamInfo.displayName) || normalizeTeamKey(teamInfo.displayName);
 
       const teamCell = document.createElement("td");
       const teamWrapper = document.createElement("div");
@@ -1181,10 +1231,137 @@
         tr.appendChild(td);
       });
 
+      tr.classList.add("standings-row");
+      tr.tabIndex = 0;
+      tr.addEventListener("click", () => openTeamDetail(row, teamInfo, teamKey));
+      tr.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openTeamDetail(row, teamInfo, teamKey);
+        }
+      });
+
       frag.appendChild(tr);
     });
     els.standingsBody.appendChild(frag);
     if (els.standingsStatus) els.standingsStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  }
+
+  function openTeamDetail(row, teamInfo, teamKey) {
+    if (!els.detailOverlay) return;
+    const standing = row || lookupStanding(state.standingsLookup, teamKey);
+    const normalizedKey = teamKey || canonicalTeamKey(teamInfo?.canonicalKey) || normalizeTeamKey(teamInfo?.displayName);
+    const players = state.playersByTeam.get(normalizedKey) || [];
+
+    renderTeamSummary(teamInfo, standing);
+    renderTeamPlayers(players, teamInfo, standing);
+    if (players.length) renderPlayerDetail(players[0], teamInfo, standing);
+    else if (els.playerDetail) els.playerDetail.innerHTML = `<div class="state state--empty">No players recorded for ${teamInfo.displayName} yet.</div>`;
+
+    if (els.detailOverlay) els.detailOverlay.hidden = false;
+  }
+
+  function renderTeamSummary(teamInfo, standing) {
+    if (!els.teamSummary) return;
+    const recordText = standing ? formatRecord(standing) : "Record —";
+    const streak = standing?.points != null ? `${standing.points} pts` : "Points —";
+    const diff = standing?.plusMinus != null ? `+/- ${standing.plusMinus}` : "Margin —";
+
+    const crest = document.createElement("div");
+    crest.className = "team-summary__crest";
+    setLogo(crest, teamInfo.logoKey);
+
+    const name = document.createElement("div");
+    name.className = "team-summary__name";
+    name.textContent = teamInfo.displayName;
+
+    const meta = document.createElement("div");
+    meta.className = "team-summary__meta";
+    meta.innerHTML = `
+      <span>${recordText}</span>
+      <span>${streak}</span>
+      <span>${diff}</span>
+      <span>${standing?.winPct != null ? formatPct(standing.winPct) : "Win% —"}</span>
+    `;
+
+    els.detailTitle && (els.detailTitle.textContent = `${teamInfo.displayName} breakdown`);
+    els.detailSubtitle && (els.detailSubtitle.textContent = "Roster, record, and player momentum");
+    els.detailRecord && (els.detailRecord.textContent = recordText);
+
+    const card = document.createElement("div");
+    card.className = "team-summary__card";
+    card.appendChild(crest);
+    card.appendChild(name);
+    card.appendChild(meta);
+    els.teamSummary.innerHTML = "";
+    els.teamSummary.appendChild(card);
+  }
+
+  function renderTeamPlayers(players, teamInfo, standing) {
+    if (!els.teamPlayers) return;
+    els.teamPlayers.innerHTML = "";
+
+    if (!players.length) {
+      els.teamPlayers.innerHTML = `<div class="state state--empty">No rostered players yet.</div>`;
+      return;
+    }
+
+    players.forEach((player) => {
+      const card = document.createElement("button");
+      card.type = "button";
+      card.className = "player-chip";
+      card.innerHTML = `
+        ${playerAvatar(player)}
+        <div class="player-chip__body">
+          <div class="player-chip__name">${escapeHtml(player.player)}</div>
+          <div class="player-chip__meta">MVP: ${formatScore(player.mvpScore)} • Win%: ${formatPct(player.winPct)}</div>
+        </div>
+      `;
+
+      card.addEventListener("click", () => renderPlayerDetail(player, teamInfo, standing));
+      els.teamPlayers.appendChild(card);
+    });
+  }
+
+  function renderPlayerDetail(player, teamInfo, standing) {
+    if (!els.playerDetail) return;
+    const metrics = [
+      { label: "Pass rating", value: formatScore(player.passRating) },
+      { label: "Comp%", value: formatPct(player.compPct) },
+      { label: "Yards", value: player.yards != null ? Number(player.yards).toLocaleString() : "—" },
+      { label: "TD / INT", value: player.passTd != null || player.interceptions != null ? `${player.passTd ?? 0}/${player.interceptions ?? 0}` : "—" },
+      { label: "Rush yds", value: formatScore(player.rushYards) },
+      { label: "Rec yds", value: formatScore(player.recvYards) },
+      { label: "Targets", value: formatScore(player.targets) },
+      { label: "Def score", value: formatScore(player.defScore) },
+      { label: "Total TD", value: formatScore(player.totalTd) },
+    ];
+
+    const card = document.createElement("div");
+    card.className = "player-detail-card";
+    card.innerHTML = `
+      <div class="player-detail-card__header">
+        ${playerAvatar(player)}
+        <div>
+          <div class="player-detail-card__name">${escapeHtml(player.player)}</div>
+          <div class="player-detail-card__sub">${teamInfo.displayName} • ${standing ? formatRecord(standing) : "Record —"}</div>
+        </div>
+        <div class="badge">${formatScore(player.mvpScore)} MVP</div>
+      </div>
+      <div class="player-detail-card__stats">
+        ${metrics
+          .map(
+            (m) => `
+          <div class="player-detail-card__stat">
+            <div class="player-detail-card__stat-label">${m.label}</div>
+            <div class="player-detail-card__stat-value">${m.value}</div>
+          </div>`
+          )
+          .join("")}
+      </div>
+    `;
+    els.playerDetail.innerHTML = "";
+    els.playerDetail.appendChild(card);
   }
 
   function renderBracket(rows) {
@@ -1859,6 +2036,15 @@
       .toUpperCase();
   }
 
+  function playerAvatar(rec) {
+    const image = rec.image || state.rosterMap.get(rec.player)?.image || null;
+    const hasImage = Boolean(image);
+    const style = hasImage ? `style="background-image:url('${escapeHtml(image)}')"` : "";
+    const cls = hasImage ? "player__avatar player__avatar--photo" : "player__avatar";
+    const text = hasImage ? "" : escapeHtml(initials(rec.player));
+    return `<div class="${cls}" ${style}>${text}</div>`;
+  }
+
   function escapeHtml(s) {
     return String(s)
       .replaceAll("&", "&amp;")
@@ -1881,6 +2067,20 @@
       if (!key) return;
       map.set(key, row);
     });
+    return map;
+  }
+
+  function buildPlayersByTeam(records) {
+    const map = new Map();
+    records.forEach((rec) => {
+      const key = canonicalTeamKey(rec.team) || normalizeTeamKey(rec.team);
+      if (!key) return;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(rec);
+    });
+    map.forEach((arr) =>
+      arr.sort((a, b) => (b.mvpScore ?? 0) - (a.mvpScore ?? 0) || (b.yards ?? 0) - (a.yards ?? 0))
+    );
     return map;
   }
 
@@ -2110,6 +2310,8 @@
   }
 
   function launchConfetti(color = "#60a5fa") {
+    const winTab = document.getElementById("tab-win");
+    if (winTab && !winTab.classList.contains("tab--active")) return;
     if (state.hasShownConfetti) return;
     state.hasShownConfetti = true;
     const canvas = document.createElement("canvas");

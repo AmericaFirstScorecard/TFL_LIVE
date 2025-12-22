@@ -30,7 +30,7 @@
 
     <main>
       <section id="tab-win" class="tab tab--active" aria-labelledby="Win Probability view">
-        <div class="panel">
+        <div class="panel" id="winPanel">
           <div class="panel__header">
             <div class="badge" id="gameStatus">Loading…</div>
             <div class="pill-row" id="pillRow"></div>
@@ -210,6 +210,27 @@
         </div>
       </section>
     </main>
+
+    <div class="overlay" id="detailOverlay" hidden>
+      <div class="overlay__backdrop"></div>
+      <div class="overlay__content" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+        <button class="overlay__close" id="detailClose" aria-label="Close details">×</button>
+        <div class="detail">
+          <div class="detail__header">
+            <div>
+              <div class="detail__title" id="detailTitle">Team details</div>
+              <div class="detail__subtitle" id="detailSubtitle">Tap a team in standings to explore</div>
+            </div>
+            <div class="detail__badge" id="detailRecord">Record —</div>
+          </div>
+          <div class="detail__body">
+            <div class="detail__team" id="teamSummary"></div>
+            <div class="detail__players" id="teamPlayers"></div>
+            <div class="detail__player-detail" id="playerDetail"></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <script src="app.js"></script>
 </body>
