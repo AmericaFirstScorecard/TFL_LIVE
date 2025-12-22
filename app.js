@@ -170,11 +170,12 @@
     els.teamBScoreDelta = id("teamBScoreDelta");
     els.winnerArrow = id("winnerArrow");
 
-    els.possession = id("possession");
-    els.quarter = id("quarter");
-    els.clock = id("clock");
-    els.downDistance = id("downDistance");
-    els.ytg = id("ytg");
+    els.tickerQuarter = id("tickerQuarter");
+    els.tickerClock = id("tickerClock");
+    els.tickerDown = id("tickerDown");
+    els.tickerYtg = id("tickerYtg");
+    els.tickerPossession = id("tickerPossession");
+    els.tickerBall = id("tickerBall");
     els.lastUpdate = id("lastUpdate");
 
     els.momentumValue = id("momentumValue");
@@ -1056,15 +1057,18 @@
     updateScore(els.teamBScore, els.teamBScoreDelta, latest.scoreB, state.lastScores.b, "b");
     state.lastScores = { a: latest.scoreA ?? 0, b: latest.scoreB ?? 0 };
 
-    if (els.possession)
-      els.possession.textContent = latest.possession
-        ? `Possession: ${resolveTeam(latest.possession).displayName}`
-        : "Possession —";
-    if (els.quarter) els.quarter.textContent = latest.quarter ? `Q${latest.quarter}` : "Q-";
-    if (els.clock) els.clock.textContent = latest.minuteLeft != null ? `${formatClock(latest.minuteLeft)} ML` : "ML —";
+    const possessionTeam = latest.possession ? resolveTeam(latest.possession) : null;
+    if (els.tickerPossession)
+      els.tickerPossession.textContent = possessionTeam ? possessionTeam.displayName : "—";
+    if (els.tickerBall) els.tickerBall.classList.toggle("ticker__ball--active", Boolean(possessionTeam));
 
-    if (els.downDistance) els.downDistance.textContent = latest.down ? `Down: ${latest.down}` : "Down —";
-    if (els.ytg) els.ytg.textContent = latest.ytg || latest.distance ? `${latest.ytg || latest.distance} YTG` : "YTG —";
+    if (els.tickerQuarter) els.tickerQuarter.textContent = latest.quarter ? `Q${latest.quarter}` : "Q-";
+    if (els.tickerClock) els.tickerClock.textContent = latest.minuteLeft != null ? `${formatClock(latest.minuteLeft)}` : "--:--";
+
+    const downLabel = formatDownTicker(latest.down, latest.distance);
+    if (els.tickerDown) els.tickerDown.textContent = downLabel;
+    const ytgText = latest.ytg || latest.distance;
+    if (els.tickerYtg) els.tickerYtg.textContent = ytgText ? `YTG ${ytgText}` : "YTG —";
     updatePossessionIndicators(teamAInfo, teamBInfo, latest.possession);
 
     const resolvedTeamList = (teams || []).map((t) => resolveTeam(t).displayName);
@@ -2070,6 +2074,15 @@
     const logoKey = codeMatch?.logo || (canonical || normalizeTeamKey(displayName));
 
     return { displayName, logoKey, canonicalKey: canonical || normalizeTeamKey(displayName) };
+  }
+
+  function formatDownTicker(down, distance) {
+    if (!down) return "—";
+    const ordinals = { 1: "1st", 2: "2nd", 3: "3rd", 4: "4th" };
+    const downNum = Number(down);
+    const downLabel = ordinals[downNum] || String(down).trim();
+    if (!distance) return `${downLabel}`;
+    return `${downLabel} & ${distance}`;
   }
 
   function formatClock(minutesLeft) {
