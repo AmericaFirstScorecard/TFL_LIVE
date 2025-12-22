@@ -27,7 +27,8 @@
   const REFRESH_SEC = (() => {
     const u = new URL(location.href);
     const v = Number(u.searchParams.get("refresh"));
-    return Number.isFinite(v) && v > 0 ? v : 0;
+    if (Number.isFinite(v) && v >= 0) return v;
+    return 30; // default: refresh every 30s
   })();
 
   /**********************
@@ -85,6 +86,20 @@
     },
   };
 
+  // Palette for teams without explicit branding (deterministic pick)
+  const AUTO_COLORS = [
+    rgb(236, 72, 153),   // pink
+    rgb(96, 165, 250),   // blue
+    rgb(34, 197, 94),    // green
+    rgb(250, 204, 21),   // yellow
+    rgb(249, 115, 22),   // orange
+    rgb(129, 140, 248),  // indigo
+    rgb(94, 234, 212),   // teal
+    rgb(168, 85, 247),   // purple
+    rgb(248, 113, 113),  // red
+    rgb(52, 211, 153),   // mint
+  ];
+
   // Accept common variants from your sheet and normalize to the required keys above.
   const TEAM_ALIASES = new Map([
     // SanFran
@@ -137,6 +152,30 @@
     if (mapped2 && TEAM[mapped2]) return mapped2;
 
     return null;
+  }
+
+  function slugifyTeam(raw) {
+    return String(raw || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^\w]+/g, "_")
+      .replace(/^_+|_+$/g, "") || null;
+  }
+
+  function pickAutoColor(key) {
+    let hash = 0;
+    for (let i = 0; i < key.length; i++) {
+      hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+    }
+    return AUTO_COLORS[hash % AUTO_COLORS.length] || rgb(120, 120, 120);
+  }
+
+  function ensureTeamEntry(key, display) {
+    if (TEAM[key]) return TEAM[key];
+    const color = pickAutoColor(key);
+    const team = { key, display: display || key, logo: null, color };
+    TEAM[key] = team;
+    return team;
   }
 
   /**********************
@@ -458,15 +497,19 @@
     // Determine teams from sheet (use last non-empty row info)
     const awayRaw = getFirstNonEmpty(records.slice().reverse(), H_AWAYTEAM);
     const homeRaw = getFirstNonEmpty(records.slice().reverse(), H_HOMETEAM);
-    const awayKey = normalizeTeamKey(awayRaw);
-    const homeKey = normalizeTeamKey(homeRaw);
-
-    if (!awayKey || !homeKey) {
-      throw new Error(
-        `Away/Home team keys not recognized. Got Away='${awayRaw}', Home='${homeRaw}'. ` +
-        `Must map to: SanFran, Bengals, Cowboys, Giants, Louis.`
-      );
+    if (!awayRaw || !homeRaw) {
+      throw new Error("Away/Home team names missing in sheet.");
     }
+
+    let awayKey = normalizeTeamKey(awayRaw);
+    let homeKey = normalizeTeamKey(homeRaw);
+
+    // Allow new teams by generating deterministic keys/colors
+    if (!awayKey) awayKey = slugifyTeam(awayRaw);
+    if (!homeKey) homeKey = slugifyTeam(homeRaw);
+
+    ensureTeamEntry(awayKey, awayRaw);
+    ensureTeamEntry(homeKey, homeRaw);
 
     // Score columns: prefer team-named columns (Giants, Bengals, etc.), else generic
     const awayScoreCol = TEAM[awayKey]?.key && hmap.get(TEAM[awayKey].key.toLowerCase()) ? TEAM[awayKey].key : null;
@@ -1214,13 +1257,24 @@
   /**********************
    * FETCH + LOOP
    **********************/
+  function buildCSVUrl() {
+    const bust = `_=${Date.now()}`;
+    return SHEET_CSV_URL.includes("?")
+      ? `${SHEET_CSV_URL}&${bust}`
+      : `${SHEET_CSV_URL}?${bust}`;
+  }
+
+  let isRefreshing = false;
+
   async function fetchCSV() {
-    const res = await fetch(SHEET_CSV_URL, { cache: "no-store" });
+    const res = await fetch(buildCSVUrl(), { cache: "no-store" });
     if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
     return await res.text();
   }
 
-  async function refreshOnce() {
+  async function refreshOnce(reason = "manual") {
+    if (isRefreshing) return;
+    isRefreshing = true;
     try {
       if (!SHEET_CSV_URL || SHEET_CSV_URL.includes("PASTE_YOUR_PUBLISHED_CSV_URL_HERE")) {
         throw new Error("Credit: Tony Stark TFL Yahoo Sports");
@@ -1236,7 +1290,8 @@
 
       statusLine.textContent =
         `Away=${awayKey} | Home=${homeKey} | snapshots=${snaps.length}` +
-        (REFRESH_SEC ? ` | auto-refresh=${REFRESH_SEC}s` : "");
+        (REFRESH_SEC ? ` | auto-refresh=${REFRESH_SEC}s` : "") +
+        ` | last=${reason}`;
 
       await renderCard({ awayKey, homeKey, snaps, pregame });
     } catch (e) {
@@ -1252,6 +1307,8 @@
       ctx.font = "500 16px system-ui, -apple-system, Segoe UI, Roboto, Arial";
       ctx.fillStyle = "rgba(199,207,220,0.9)";
       wrapText(ctx, e.message, 60, 120, FINAL_W - 120, 22);
+    } finally {
+      isRefreshing = false;
     }
   }
 
@@ -1272,6 +1329,9 @@
   }
 
   // Start
-  refreshOnce();
-  if (REFRESH_SEC) setInterval(refreshOnce, REFRESH_SEC * 1000);
+  refreshOnce("initial").finally(() => {
+    if (REFRESH_SEC > 0) {
+      setInterval(() => refreshOnce("auto"), REFRESH_SEC * 1000);
+    }
+  });
 })();
