@@ -32,7 +32,7 @@
           <div class="panel__header">
             <div class="badge" id="gameStatus">Loading…</div>
             <div class="pill-row" id="pillRow"></div>
-            <div class="tag" id="pregameTag">Pregame baseline: —</div>
+            <div class="tag" id="pregameTag">Pregame: —</div>
           </div>
 
           <div class="teams">
@@ -44,9 +44,15 @@
             </div>
             <div class="score">
               <div class="score__line">
-                <span id="teamAScore">0</span>
+                <div class="score__team">
+                  <span class="score__delta" id="teamAScoreDelta"></span>
+                  <span class="score__value" id="teamAScore">0</span>
+                </div>
                 <span class="score__divider">—</span>
-                <span id="teamBScore">0</span>
+                <div class="score__team">
+                  <span class="score__delta" id="teamBScoreDelta"></span>
+                  <span class="score__value" id="teamBScore">0</span>
+                </div>
               </div>
               <div class="score__meta">
                 <span id="possession">Possession —</span>

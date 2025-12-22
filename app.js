@@ -25,6 +25,17 @@
     "2": { name: "San Francisco 49ers", logo: "sanfran" },
     "3": { name: "Dallas Cowboys", logo: "cowboys" },
     "4": { name: "New York Giants", logo: "giants" },
+    lou: { name: "Louisville Cardinals", logo: "cards" },
+    cards: { name: "Louisville Cardinals", logo: "cards" },
+    cin: { name: "Cincinnati Bengals", logo: "bengals" },
+    bengals: { name: "Cincinnati Bengals", logo: "bengals" },
+    dal: { name: "Dallas Cowboys", logo: "cowboys" },
+    cowboys: { name: "Dallas Cowboys", logo: "cowboys" },
+    ny: { name: "New York Giants", logo: "giants" },
+    giants: { name: "New York Giants", logo: "giants" },
+    "49ers": { name: "San Francisco 49ers", logo: "sanfran" },
+    sanfran: { name: "San Francisco 49ers", logo: "sanfran" },
+    "san francisco 49ers": { name: "San Francisco 49ers", logo: "sanfran" },
   };
 
   const LOGO_MAP = buildLogoMap();
@@ -85,6 +96,8 @@
     lastMatchup: null,
     sortHandlersAttached: false,
     logoExistCache: new Map(), // filename -> boolean
+    lastScores: { a: null, b: null },
+    deltaTimers: { a: null, b: null },
   };
 
   const els = {};
@@ -133,6 +146,8 @@
 
     els.teamAScore = id("teamAScore");
     els.teamBScore = id("teamBScore");
+    els.teamAScoreDelta = id("teamAScoreDelta");
+    els.teamBScoreDelta = id("teamBScoreDelta");
 
     els.possession = id("possession");
     els.quarter = id("quarter");
@@ -734,10 +749,19 @@
     const teamAInfo = resolveTeam(teamA);
     const teamBInfo = resolveTeam(teamB);
 
-    state.baseline = baseline;
+    const pregameBaseline = baseline;
+    const liveBaseline = computeLiveBaseline(home);
+    state.baseline = liveBaseline != null ? liveBaseline / 100 : null;
 
-    if (els.baselineValue) els.baselineValue.textContent = baseline != null ? `${(baseline * 100).toFixed(1)}%` : "—";
-    if (els.pregameTag) els.pregameTag.textContent = baseline != null ? `Pregame baseline: ${(baseline * 100).toFixed(1)}%` : "Pregame baseline: —";
+    if (els.baselineValue) {
+      const delta = pregameBaseline != null && liveBaseline != null ? liveBaseline - pregameBaseline * 100 : null;
+      const deltaText = delta != null && Math.abs(delta) >= 0.05 ? ` (${formatDelta(delta)})` : "";
+      els.baselineValue.textContent =
+        liveBaseline != null ? `Game avg: ${liveBaseline.toFixed(1)}%${deltaText}` : "—";
+    }
+    if (els.pregameTag)
+      els.pregameTag.textContent =
+        pregameBaseline != null ? `Pregame: ${(pregameBaseline * 100).toFixed(1)}%` : "Pregame: —";
 
     updateChart(labels, home, away, teamAInfo, teamBInfo);
 
@@ -757,8 +781,9 @@
     if (els.teamARecord) els.teamARecord.textContent = teamARecord ? formatRecord(teamARecord) : "Record —";
     if (els.teamBRecord) els.teamBRecord.textContent = teamBRecord ? formatRecord(teamBRecord) : "Record —";
 
-    if (els.teamAScore) els.teamAScore.textContent = String(latest.scoreA ?? 0);
-    if (els.teamBScore) els.teamBScore.textContent = String(latest.scoreB ?? 0);
+    updateScore(els.teamAScore, els.teamAScoreDelta, latest.scoreA, state.lastScores.a, "a");
+    updateScore(els.teamBScore, els.teamBScoreDelta, latest.scoreB, state.lastScores.b, "b");
+    state.lastScores = { a: latest.scoreA ?? 0, b: latest.scoreB ?? 0 };
 
     if (els.possession)
       els.possession.textContent = latest.possession
@@ -782,12 +807,12 @@
     setLogo(els.teamALogo, teamAInfo.logoKey);
     setLogo(els.teamBLogo, teamBInfo.logoKey);
 
-    const metrics = analyzeGame(home, labels);
+    const metrics = analyzeGame(home, snapshots);
     if (els.momentumValue) els.momentumValue.textContent = metrics.momentum;
     if (els.swingValue) els.swingValue.textContent = metrics.bigSwing;
     if (els.clutchValue) els.clutchValue.textContent = metrics.clutch;
 
-    renderPills(metrics, baseline);
+    renderPills(metrics, pregameBaseline, liveBaseline);
 
     toggleError(els.winError, false);
     setLoading(els.winLoading, false);
@@ -907,16 +932,41 @@
     const frag = document.createDocumentFragment();
     rows.forEach((row) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${escapeHtml(row.team)}</td>
-        <td>${row.games ?? "—"}</td>
-        <td>${row.wins ?? "—"}</td>
-        <td>${row.draws ?? "—"}</td>
-        <td>${row.losses ?? "—"}</td>
-        <td>${row.plusMinus ?? "—"}</td>
-        <td>${row.points ?? "—"}</td>
-        <td>${row.winPct != null ? formatPct(row.winPct) : "—"}</td>
-      `;
+      const teamInfo = resolveTeam(row.team);
+
+      const teamCell = document.createElement("td");
+      const teamWrapper = document.createElement("div");
+      teamWrapper.className = "standings-team";
+
+      const logo = document.createElement("div");
+      logo.className = "standings-team__logo";
+      setLogo(logo, teamInfo.logoKey);
+
+      const name = document.createElement("div");
+      name.className = "standings-team__name";
+      name.textContent = teamInfo.displayName;
+
+      teamWrapper.appendChild(logo);
+      teamWrapper.appendChild(name);
+      teamCell.appendChild(teamWrapper);
+      tr.appendChild(teamCell);
+
+      const cells = [
+        row.games ?? "—",
+        row.wins ?? "—",
+        row.draws ?? "—",
+        row.losses ?? "—",
+        row.plusMinus ?? "—",
+        row.points ?? "—",
+        row.winPct != null ? formatPct(row.winPct) : "—",
+      ];
+
+      cells.forEach((val) => {
+        const td = document.createElement("td");
+        td.textContent = val;
+        tr.appendChild(td);
+      });
+
       frag.appendChild(tr);
     });
     els.standingsBody.appendChild(frag);
@@ -946,7 +996,7 @@
   // =======================
   // METRICS
   // =======================
-  function analyzeGame(homeSeries, labels) {
+  function analyzeGame(homeSeries, snapshots) {
     const filtered = homeSeries.filter((v) => v != null && !Number.isNaN(v));
     const recent = filtered.slice(-3);
     const delta = recent.length >= 2 ? recent[recent.length - 1] - recent[0] : 0;
@@ -955,45 +1005,62 @@
       Math.abs(delta) >= MOMENTUM_THRESHOLD * 100 ? `${delta >= 0 ? "+" : ""}${delta.toFixed(1)} pts` : "Stable";
 
     const bigSwing = computeBigSwing(filtered);
-    const clutch = computeClutch(filtered, labels);
+    const clutch = computeClutch(filtered, snapshots);
 
     return { momentum, bigSwing, clutch };
   }
 
   function computeBigSwing(series) {
+    const cleaned = series.filter((v) => v != null && !Number.isNaN(v));
+    if (cleaned.length < 2) return "—";
+
     let swing = 0;
-    for (let i = 1; i < series.length; i++) {
-      const a = series[i - 1];
-      const b = series[i];
-      if (a == null || b == null) continue;
-      swing = Math.max(swing, Math.abs(b - a));
+    for (let i = 1; i < cleaned.length; i++) {
+      swing = Math.max(swing, Math.abs(cleaned[i] - cleaned[i - 1]));
     }
-    return swing >= BIG_SWING_THRESHOLD * 100 ? `${swing.toFixed(1)} pts` : "—";
+
+    const rangeSwing = Math.max(...cleaned) - Math.min(...cleaned);
+    const displaySwing = Math.max(swing, rangeSwing);
+
+    return displaySwing > 0 ? `${displaySwing.toFixed(1)} pts` : "—";
   }
 
-  function computeClutch(series, labels) {
-    if (!series.length) return "—";
-    const lastLabel = labels[labels.length - 1];
+  function computeClutch(series, snapshots) {
+    if (!series.length || !snapshots?.length) return "—";
     const last = series[series.length - 1];
-    if (last == null) return "—";
+    const lastSnap = snapshots[snapshots.length - 1];
+    if (last == null || !lastSnap) return "—";
 
-    const isClutch =
-      typeof lastLabel === "number"
-        ? lastLabel <= 5 && last >= 35 && last <= 65
-        : last >= 35 && last <= 65;
+    const minutesLeft = lastSnap.minuteLeft;
+    if (minutesLeft == null) return "—";
 
-    return isClutch ? "In clutch" : "—";
+    const isTight = last >= 30 && last <= 70;
+    if (minutesLeft <= 5 && isTight) return `Clutch (${formatClock(minutesLeft)} left)`;
+    if (minutesLeft <= 5) return `Edge (${formatClock(minutesLeft)} left)`;
+
+    return `${formatClock(minutesLeft)} left`;
   }
 
-  function renderPills(metrics, baseline) {
+  function renderPills(metrics, pregameBaseline, liveBaseline) {
     if (!els.pillRow) return;
     els.pillRow.innerHTML = "";
 
     const pills = [];
-    if (baseline != null) pills.push({ label: "Pregame", value: `${(baseline * 100).toFixed(1)}%`, tone: "accent" });
+    if (liveBaseline != null) {
+      const delta = pregameBaseline != null ? liveBaseline - pregameBaseline * 100 : null;
+      pills.push({
+        label: "Baseline",
+        value:
+          delta != null && Math.abs(delta) >= 0.05
+            ? `${liveBaseline.toFixed(1)}% (${formatDelta(delta)})`
+            : `${liveBaseline.toFixed(1)}%`,
+        tone: delta != null && delta < 0 ? "warning" : "accent",
+      });
+    }
     if (metrics.momentum !== "Stable") pills.push({ label: "Momentum", value: metrics.momentum, tone: "accent" });
     if (metrics.bigSwing !== "—") pills.push({ label: "Big swing", value: metrics.bigSwing, tone: "warning" });
-    if (metrics.clutch === "In clutch") pills.push({ label: "Clutch time", value: "Tight window", tone: "danger" });
+    if (metrics.clutch && metrics.clutch !== "—")
+      pills.push({ label: "Clutch window", value: metrics.clutch, tone: "danger" });
 
     if (!pills.length) pills.push({ label: "Calm", value: "No major swings", tone: "ghost" });
 
@@ -1008,6 +1075,19 @@
   // =======================
   // HELPERS
   // =======================
+  function computeLiveBaseline(series) {
+    const cleaned = series.filter((v) => v != null && !Number.isNaN(v));
+    if (!cleaned.length) return null;
+    const avg = cleaned.reduce((sum, v) => sum + v, 0) / cleaned.length;
+    return parseFloat(avg.toFixed(1));
+  }
+
+  function formatDelta(value) {
+    if (value == null || Number.isNaN(value)) return "";
+    const rounded = value.toFixed(1);
+    return `${value >= 0 ? "+" : ""}${rounded}%`;
+  }
+
   function buildLogoMap() {
     const map = {};
     Object.entries(TEAM_CODE_MAP).forEach(([code, info]) => {
@@ -1246,6 +1326,44 @@
     dsB.backgroundColor = hexToRgba(colorB, 0.25);
   }
 
+  function updateScore(el, deltaEl, nextValue, previousValue, key) {
+    if (!el) return;
+    const safeNext = Number.isFinite(Number(nextValue)) ? Number(nextValue) : 0;
+    const safePrev = Number.isFinite(Number(previousValue)) ? Number(previousValue) : null;
+
+    if (safePrev != null && safeNext < safePrev) {
+      clearTimeout(state.deltaTimers[key]);
+      deltaEl?.classList.remove("score__delta--show");
+      el.textContent = String(safeNext);
+      return;
+    }
+
+    if (safePrev != null && safeNext > safePrev) {
+      triggerScoreDelta(deltaEl, safeNext - safePrev, key);
+      animateScore(el);
+    }
+
+    el.textContent = String(safeNext);
+  }
+
+  function triggerScoreDelta(el, diff, key) {
+    if (!el) return;
+    el.textContent = `+${diff}`;
+    el.classList.add("score__delta--show");
+    clearTimeout(state.deltaTimers[key]);
+    state.deltaTimers[key] = setTimeout(() => {
+      el.classList.remove("score__delta--show");
+    }, 2600);
+  }
+
+  function animateScore(el) {
+    el.classList.remove("score__value--bump");
+    // Force reflow
+    // eslint-disable-next-line no-unused-expressions
+    el.offsetWidth;
+    el.classList.add("score__value--bump");
+  }
+
   function findTeamRecord(...candidates) {
     for (const raw of candidates) {
       const key = standingsKey(raw);
@@ -1279,15 +1397,16 @@
     // Same-origin check (works on GitHub Pages); avoids spamming broken image 404s
     if (state.logoExistCache.has(file)) return state.logoExistCache.get(file);
 
-    try {
-      const res = await fetch(logoPath(file), { method: "HEAD", cache: "no-store" });
-      const ok = res.ok;
-      state.logoExistCache.set(file, ok);
-      return ok;
-    } catch {
-      state.logoExistCache.set(file, false);
-      return false;
-    }
+    const url = logoPath(file);
+    const ok = await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = `${url}?cb=${Date.now()}`;
+    });
+
+    state.logoExistCache.set(file, ok);
+    return ok;
   }
 
   function variants(file) {
