@@ -41,6 +41,26 @@
     "63": { name: "Arizona Cardinals", logo: "cards" },
   };
 
+  const STANDINGS_ALIASES = {
+    lou: "lou",
+    cards: "lou",
+    cardinals: "lou",
+    "arizona cardinals": "lou",
+    cin: "cin",
+    bengals: "cin",
+    "cincinnati bengals": "cin",
+    dal: "dal",
+    cowboys: "dal",
+    "dallas cowboys": "dal",
+    "san francisco 49ers": "49ers",
+    "sf 49ers": "49ers",
+    "49ers": "49ers",
+    sanfran: "49ers",
+    ny: "ny",
+    giants: "ny",
+    "new york giants": "ny",
+  };
+
   // =======================
   // STATE / DOM
   // =======================
@@ -49,8 +69,12 @@
     baseline: null,
     matchupLoading: true,
     mvpLoading: true,
+    standingsLoading: true,
     sort: { key: "mvpScore", dir: "desc" },
     lastMvpRecords: [],
+    lastStandings: [],
+    standingsLookup: new Map(),
+    lastMatchup: null,
     sortHandlersAttached: false,
     logoExistCache: new Map(), // filename -> boolean
   };
@@ -122,6 +146,11 @@
     els.mvpEmpty = id("mvpEmpty");
     els.mvpTableBody = id("mvpTableBody");
     els.mvpStatus = id("mvpStatus");
+
+    els.standingsLoading = id("standingsLoading");
+    els.standingsError = id("standingsError");
+    els.standingsBody = id("standingsTableBody");
+    els.standingsStatus = id("standingsStatus");
   }
 
   function initTabs() {
@@ -129,12 +158,13 @@
     const tabs = {
       win: document.getElementById("tab-win"),
       mvp: document.getElementById("tab-mvp"),
+      standings: document.getElementById("tab-standings"),
     };
 
     function setTab(tab) {
       Object.values(tabs).forEach((el) => el && el.classList.remove("tab--active"));
       navItems.forEach((el) => el.classList.remove("nav__item--active"));
-      const key = tab === "mvp" ? "mvp" : "win";
+      const key = tabs[tab] ? tab : tab === "mvp" ? "mvp" : "win";
       tabs[key]?.classList.add("tab--active");
       navItems.find((el) => el.dataset.tab === key)?.classList.add("nav__item--active");
       window.location.hash = `#${key}`;
@@ -319,12 +349,14 @@
       const text = await fetchText(url);
       const parsed = parseMatchupCSV(text);
       if (!parsed.snapshots.length) throw new Error("No matchup rows parsed");
+      state.lastMatchup = parsed;
       renderMatchup(parsed);
       setLoading(els.winLoading, false);
     } catch (err) {
       console.error("[matchup]", err);
       showError(els.winError, `Matchup feed error: ${err.message}`);
-      renderMatchup(buildSampleMatchup()); // keep app alive
+      state.lastMatchup = buildSampleMatchup();
+      renderMatchup(state.lastMatchup); // keep app alive
       setLoading(els.winLoading, false);
     }
   }
@@ -332,21 +364,33 @@
   async function fetchMvp() {
     setLoading(els.mvpLoading, true);
     toggleError(els.mvpError, false);
+    setLoading(els.standingsLoading, true);
+    toggleError(els.standingsError, false);
 
     const url = overrideUrl("mvp") || MVP_CSV_URL;
 
     try {
       const buffer = await fetchArrayBuffer(url);
-      const records = parseMvpXlsx(buffer);
-      state.lastMvpRecords = records;
-      renderMvp(records);
+      const { mvpRecords, standings } = parseMvpWorkbook(buffer);
+      state.lastMvpRecords = mvpRecords;
+      state.lastStandings = standings;
+      state.standingsLookup = buildStandingsLookup(standings);
+      renderMvp(mvpRecords);
+      renderStandings(standings);
+      if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
       setLoading(els.mvpLoading, false);
+      setLoading(els.standingsLoading, false);
     } catch (err) {
       console.error("[mvp]", err);
       showError(els.mvpError, `MVP feed error: ${err.message}`);
       state.lastMvpRecords = buildSampleMvp();
+      state.lastStandings = buildSampleStandings();
+      state.standingsLookup = buildStandingsLookup(state.lastStandings);
       renderMvp(state.lastMvpRecords);
+      renderStandings(state.lastStandings);
+      if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
       setLoading(els.mvpLoading, false);
+      setLoading(els.standingsLoading, false);
     }
   }
 
@@ -431,61 +475,73 @@
       };
     });
 
-    const baseline = snapshots.find((s) => s.pregame != null)?.pregame ?? snapshots[0]?.winProbHome ?? null;
-    const teams = Array.from(new Set([TEAM_A.name, TEAM_B.name].filter(Boolean)));
+    const baseline =
+      snapshots.find((s) => s.pregame != null)?.pregame ?? snapshots[0]?.winProbHome ?? null;
+    const teams = Array.from(new Set([teamA, teamB].filter(Boolean)));
 
-    return { snapshots, teams, baseline };
+    return { snapshots, teams, baseline, teamA, teamB };
   }
 
-  function parseMvpXlsx(buffer) {
+  function parseMvpWorkbook(buffer) {
     if (typeof XLSX === "undefined") throw new Error("XLSX library not loaded");
     const workbook = XLSX.read(buffer, { type: "array" });
-    const sheetName = workbook.SheetNames[0];
+    return {
+      mvpRecords: parseMvpSheet(workbook),
+      standings: parseStandingsSheet(workbook),
+    };
+  }
+
+  function parseMvpSheet(workbook) {
+    const sheetName =
+      workbook.SheetNames.find((n) => n.toLowerCase().includes("passing")) || workbook.SheetNames[0];
     if (!sheetName) return [];
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "", range: 2 });
     if (!rows.length) return [];
 
-    const norm = (obj) => {
-      const out = {};
-      for (const [k, v] of Object.entries(obj)) out[String(k).trim().toLowerCase()] = v;
-      return out;
-    };
+    return rows
+      .map((row) => ({
+        player: String(row.Player || row.player || "Player").trim(),
+        team: String(row.Team || row.team || "").trim() || String(row["Team "] || "").trim(),
+        winPct: parseNumber(row["Team Win%"]) ?? parseNumber(row.win_pct) ?? 0,
+        mvpScore: parseNumber(row["Passer Rating"]) ?? parseNumber(row.passer_rating) ?? 0,
+        completions: parseNumber(row.Completions) ?? null,
+        attempts: parseNumber(row.Attempts) ?? null,
+        passTd: parseNumber(row["Pass TD"]) ?? null,
+        interceptions: parseNumber(row.INT) ?? null,
+        yards: parseNumber(row.Yards) ?? null,
+        compPct: parseNumber(row["Comp%"]) ?? null,
+      }))
+      .filter((r) => r.player && (r.mvpScore != null || r.winPct != null));
+  }
 
-    const pick = (r, keys) => {
-      for (const k of keys) {
-        const v = r[k];
-        if (v != null && String(v).trim() !== "") return v;
-      }
-      return null;
-    };
+  function parseStandingsSheet(workbook) {
+    const sheetName =
+      workbook.SheetNames.find((n) => n.toLowerCase().includes("standing")) || workbook.SheetNames[0];
+    if (!sheetName) return [];
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+      defval: "",
+      range: 2, // skip top padding rows
+    });
+    if (!rows.length) return [];
 
     return rows
-      .map((row) => {
-        const r = norm(row);
-        return {
-          player: String(pick(r, ["player", "name"]) || "Player").trim(),
-          team: String(pick(r, ["team"]) || "Team").trim(),
-          winPct: parseNumber(pick(r, ["win_pct", "win%", "win"])) || 0,
-          mvpScore: parseNumber(pick(r, ["mvp_score", "score", "mvp"])) || 0,
-          impliedWithVig: parseNumber(pick(r, ["implied_with_vig", "implied", "with_vig"])) ?? null,
-          impliedNoVig: parseNumber(pick(r, ["no_vig", "implied_no_vig", "without_vig"])) ?? null,
-          decimalOdds: String(pick(r, ["decimal", "decimal_odds"]) || "").trim(),
-          americanOdds: String(pick(r, ["american", "american_odds"]) || "").trim(),
-          pass: parseNumber(pick(r, ["pass"])) ?? null,
-          rush: parseNumber(pick(r, ["rush"])) ?? null,
-          recv: parseNumber(pick(r, ["recv"])) ?? null,
-          def: parseNumber(pick(r, ["def"])) ?? null,
-          win: parseNumber(pick(r, ["win_score", "win_component"])) ?? null,
-          record: String(pick(r, ["record"]) || "").trim(),
-        };
-      })
-      .filter((r) => r.player);
+      .map((row) => ({
+        team: String(row.Team || row.team || "").trim(),
+        games: parseNumber(row.G) ?? null,
+        wins: parseNumber(row.W) ?? null,
+        draws: parseNumber(row.D) ?? null,
+        losses: parseNumber(row.L) ?? null,
+        plusMinus: parseNumber(row["+/-"]) ?? null,
+        points: parseNumber(row.P) ?? null,
+        winPct: parseNumber(row["Win%"]) ?? null,
+      }))
+      .filter((r) => r.team);
   }
 
   // =======================
   // RENDERING
   // =======================
-  function renderMatchup({ snapshots, teams, baseline }) {
+  function renderMatchup({ snapshots, teams, baseline, teamA, teamB }) {
     if (!snapshots.length) return;
 
     const maxMinute = Math.max(...snapshots.map((s) => s.minuteLeft ?? 0));
@@ -517,6 +573,11 @@
     if (els.teamAName) els.teamAName.textContent = teamAInfo.displayName;
     if (els.teamBName) els.teamBName.textContent = teamBInfo.displayName;
 
+    const teamARecord = findTeamRecord(teamAInfo.displayName, teamA);
+    const teamBRecord = findTeamRecord(teamBInfo.displayName, teamB);
+    if (els.teamARecord) els.teamARecord.textContent = teamARecord ? formatRecord(teamARecord) : "Record —";
+    if (els.teamBRecord) els.teamBRecord.textContent = teamBRecord ? formatRecord(teamBRecord) : "Record —";
+
     if (els.teamAScore) els.teamAScore.textContent = String(latest.scoreA ?? 0);
     if (els.teamBScore) els.teamBScore.textContent = String(latest.scoreB ?? 0);
 
@@ -530,7 +591,7 @@
     if (els.downDistance) els.downDistance.textContent = latest.down ? `Down: ${latest.down}` : "Down —";
     if (els.ytg) els.ytg.textContent = latest.ytg || latest.distance ? `${latest.ytg || latest.distance} YTG` : "YTG —";
 
-    const resolvedTeamList = teams.map((t) => resolveTeam(t).displayName);
+    const resolvedTeamList = (teams || []).map((t) => resolveTeam(t).displayName);
 
     if (els.teamListChip)
       els.teamListChip.textContent = resolvedTeamList.length
@@ -591,30 +652,36 @@
       const tr = document.createElement("tr");
       if (idx < 5) tr.style.boxShadow = "inset 0 1px 0 rgba(96,165,250,0.2)";
 
+      const record = findTeamRecord(row.team);
+      const recordText = record ? formatRecord(record) : "";
+      const tdInt =
+        row.passTd != null || row.interceptions != null
+          ? `${row.passTd ?? 0} / ${row.interceptions ?? 0}`
+          : "—";
+
       tr.innerHTML = `
         <td>
           <div class="player">
             <div class="player__avatar">${initials(row.player)}</div>
             <div>
               <div>${escapeHtml(row.player)}</div>
-              <div class="details">MVP: ${Number(row.mvpScore).toFixed(1)}</div>
+              <div class="details">Rating: ${formatScore(row.mvpScore)}</div>
             </div>
           </div>
         </td>
         <td>
           <div class="team-chip">
             <span>${escapeHtml(row.team)}</span>
-            <span class="record">${escapeHtml(row.record || "")}</span>
+            <span class="record">${escapeHtml(recordText)}</span>
           </div>
         </td>
         <td>${formatPct(row.winPct)}</td>
-        <td>${Number(row.mvpScore).toFixed(2)}</td>
+        <td>${formatScore(row.mvpScore)}</td>
         <td>
-          <div class="details">With Vig: ${formatPct(row.impliedWithVig)}</div>
-          <div class="details">No Vig: ${formatPct(row.impliedNoVig)}</div>
+          ${row.compPct != null ? formatPct(row.compPct) : "—"}
         </td>
-        <td>${row.decimalOdds || "—"}</td>
-        <td>${row.americanOdds || "—"}</td>
+        <td>${row.yards != null ? Number(row.yards).toLocaleString() : "—"}</td>
+        <td>${tdInt}</td>
         <td><button class="expand-btn" type="button">View</button></td>
       `;
 
@@ -623,8 +690,10 @@
       detail.innerHTML = `
         <td colspan="8">
           <div class="details">
-            Pass: ${formatScore(row.pass)} • Rush: ${formatScore(row.rush)} • Recv: ${formatScore(row.recv)} •
-            Def: ${formatScore(row.def)} • Win: ${formatScore(row.win)}
+            Completions/Attempts: ${formatScore(row.completions)} / ${formatScore(row.attempts)} •
+            Pass TD: ${formatScore(row.passTd)} • INT: ${formatScore(row.interceptions)} •
+            Yards: ${row.yards != null ? Number(row.yards).toLocaleString() : "—"} •
+            Completion%: ${row.compPct != null ? formatPct(row.compPct) : "—"}
           </div>
         </td>
       `;
@@ -642,6 +711,35 @@
 
     attachSortHandlersOnce();
     toggleError(els.mvpError, false);
+  }
+
+  function renderStandings(rows) {
+    if (!els.standingsBody) return;
+
+    els.standingsBody.innerHTML = "";
+    if (!rows.length) {
+      toggleError(els.standingsError, true);
+      return;
+    }
+    toggleError(els.standingsError, false);
+
+    const frag = document.createDocumentFragment();
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(row.team)}</td>
+        <td>${row.games ?? "—"}</td>
+        <td>${row.wins ?? "—"}</td>
+        <td>${row.draws ?? "—"}</td>
+        <td>${row.losses ?? "—"}</td>
+        <td>${row.plusMinus ?? "—"}</td>
+        <td>${row.points ?? "—"}</td>
+        <td>${row.winPct != null ? formatPct(row.winPct) : "—"}</td>
+      `;
+      frag.appendChild(tr);
+    });
+    els.standingsBody.appendChild(frag);
+    if (els.standingsStatus) els.standingsStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
   }
 
   function attachSortHandlersOnce() {
@@ -729,6 +827,14 @@
   // =======================
   // HELPERS
   // =======================
+  function formatElapsed(minutes) {
+    if (minutes == null || Number.isNaN(minutes)) return "0:00";
+    const totalSeconds = Math.max(0, Math.round(minutes * 60));
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = String(totalSeconds % 60).padStart(2, "0");
+    return `${mins}:${secs}`;
+  }
+
   function smoothSeries(series) {
     const cleaned = series.map(forceNumberOrNull);
     const values = cleaned.filter((v) => v != null);
@@ -813,6 +919,20 @@
     return Number(value).toFixed(1);
   }
 
+  function formatRecord(row) {
+    if (!row) return "Record —";
+    const w = row.wins ?? "—";
+    const l = row.losses ?? "—";
+    const d = row.draws;
+    const pct =
+      row.winPct != null && row.winPct !== ""
+        ? ` (${(row.winPct * 100).toFixed(1)}%)`
+        : "";
+    const parts = [w, l];
+    if (d != null) parts.push(d);
+    return `${parts.join("-")}${pct}`;
+  }
+
   function initials(name) {
     return String(name)
       .split(" ")
@@ -830,6 +950,33 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
+  }
+
+  function buildStandingsLookup(rows) {
+    const map = new Map();
+    rows.forEach((row) => {
+      const key = normalizeTeamKey(row.team);
+      if (!key) return;
+      map.set(key, row);
+    });
+    return map;
+  }
+
+  function standingsKey(raw) {
+    const norm = normalizeTeamKey(raw);
+    if (!norm) return null;
+    if (state.standingsLookup.has(norm)) return norm;
+    const alias = STANDINGS_ALIASES[norm];
+    if (alias && state.standingsLookup.has(alias)) return alias;
+    return null;
+  }
+
+  function findTeamRecord(...candidates) {
+    for (const raw of candidates) {
+      const key = standingsKey(raw);
+      if (key) return state.standingsLookup.get(key);
+    }
+    return null;
   }
 
   function setLoading(el, isLoading) {
@@ -942,36 +1089,38 @@
     return [
       {
         player: "Sample QB",
-        team: "Cards",
+        team: "LOU",
         winPct: 0.65,
         mvpScore: 89.3,
-        impliedWithVig: 0.2,
-        impliedNoVig: 0.17,
-        decimalOdds: "5.0",
-        americanOdds: "+400",
-        pass: 24.5,
-        rush: 6.4,
-        recv: 0,
-        def: 1.2,
-        win: 12.3,
-        record: "10-2",
+        completions: 91,
+        attempts: 140,
+        passTd: 18,
+        interceptions: 6,
+        yards: 2400,
+        compPct: 0.65,
       },
       {
         player: "Star WR",
-        team: "Cowboys",
+        team: "DAL",
         winPct: 0.6,
         mvpScore: 82.1,
-        impliedWithVig: 0.15,
-        impliedNoVig: 0.12,
-        decimalOdds: "7.5",
-        americanOdds: "+650",
-        pass: 0,
-        rush: 2.1,
-        recv: 20.5,
-        def: 0,
-        win: 9.4,
-        record: "9-3",
+        completions: 74,
+        attempts: 96,
+        passTd: 17,
+        interceptions: 2,
+        yards: 1419,
+        compPct: 0.77,
       },
+    ];
+  }
+
+  function buildSampleStandings() {
+    return [
+      { team: "LOU", games: 8, wins: 5, draws: 1, losses: 2, plusMinus: 105, points: 16, winPct: 0.69 },
+      { team: "CIN", games: 7, wins: 5, draws: 0, losses: 2, plusMinus: 92, points: 15, winPct: 0.71 },
+      { team: "49ERS", games: 7, wins: 4, draws: 1, losses: 2, plusMinus: -16, points: 13, winPct: 0.64 },
+      { team: "DAL", games: 8, wins: 4, draws: 0, losses: 4, plusMinus: -88, points: 12, winPct: 0.5 },
+      { team: "NY", games: 8, wins: 0, draws: 0, losses: 8, plusMinus: -93, points: 0, winPct: 0 },
     ];
   }
 

@@ -20,6 +20,7 @@
       <nav class="nav" aria-label="Primary">
         <a href="#win" class="nav__item nav__item--active" data-tab="win">Win Prob</a>
         <a href="#mvp" class="nav__item" data-tab="mvp">MVP Odds</a>
+        <a href="#standings" class="nav__item" data-tab="standings">Standings</a>
       </nav>
       <div class="meta">Auto-refreshing every 30 seconds</div>
     </header>
@@ -102,7 +103,7 @@
           <div class="panel__header">
             <div>
               <div class="chart-card__title">MVP Odds</div>
-              <div class="chart-card__subtitle">Live every 30s — with & without vig</div>
+              <div class="chart-card__subtitle">Passing leaders pulled live from the sheet</div>
             </div>
             <div class="badge badge--ghost" id="mvpStatus">Loading…</div>
           </div>
@@ -114,10 +115,10 @@
                   <th data-sort="player">Player</th>
                   <th data-sort="team">Team</th>
                   <th data-sort="winPct">Win%</th>
-                  <th data-sort="mvpScore">MVP Score</th>
-                  <th data-sort="impliedWithVig">Implied Prob</th>
-                  <th data-sort="decimalOdds">Decimal</th>
-                  <th data-sort="americanOdds">American</th>
+                  <th data-sort="mvpScore">Passer Rating</th>
+                  <th data-sort="compPct">Comp%</th>
+                  <th data-sort="yards">Yards</th>
+                  <th data-sort="passTd">TD / INT</th>
                   <th>Details</th>
                 </tr>
               </thead>
@@ -126,6 +127,34 @@
             <div class="state state--loading" id="mvpLoading">Loading MVP feed…</div>
             <div class="state state--error" id="mvpError" hidden>Unable to load MVP feed. Retrying…</div>
             <div class="state state--empty" id="mvpEmpty" hidden>No MVP odds available.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-standings" class="tab" aria-labelledby="Standings view">
+        <div class="panel">
+          <div class="panel__header">
+            <div class="chart-card__title">Standings</div>
+            <div class="badge badge--ghost" id="standingsStatus">Live table from MVP sheet</div>
+          </div>
+          <div class="table-container">
+            <table class="table" id="standingsTable">
+              <thead>
+                <tr>
+                  <th>Team</th>
+                  <th>G</th>
+                  <th>W</th>
+                  <th>D</th>
+                  <th>L</th>
+                  <th>+/−</th>
+                  <th>P</th>
+                  <th>Win%</th>
+                </tr>
+              </thead>
+              <tbody id="standingsTableBody"></tbody>
+            </table>
+            <div class="state state--loading" id="standingsLoading">Loading standings…</div>
+            <div class="state state--error" id="standingsError" hidden>Unable to load standings.</div>
           </div>
         </div>
       </section>
