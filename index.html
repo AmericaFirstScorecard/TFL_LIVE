@@ -1,1 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tate Football League — Live</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <div class="brand">
+        <div class="dot"></div>
+        <div class="brandText">
+          <div class="brandTitle">Tate Football League</div>
+          <div class="brandSub">Live dashboard (auto-refresh)</div>
+        </div>
+      </div>
+
+      <nav class="tabs">
+        <button class="tab active" data-tab="winprob">Win Probability</button>
+        <button class="tab" data-tab="mvp">MVP Odds</button>
+      </nav>
+
+      <div class="actions">
+        <div id="status" class="status">Starting…</div>
+        <button id="downloadBtn" class="btn">Download PNG</button>
+      </div>
+    </header>
+
+    <main class="content">
+      <!-- WIN PROB TAB -->
+      <section id="tab-winprob" class="panel active">
+        <div class="canvasCard">
+          <canvas id="cardCanvas" width="1800" height="1050"></canvas>
+        </div>
+        <div class="metaRow">
+          <div class="metaItem"><span class="k">Source:</span> WinProb Google Sheet</div>
+          <div class="metaItem"><span class="k">Refresh:</span> every 30s</div>
+          <div class="metaItem"><span class="k">Last update:</span> <span id="lastUpdate">—</span></div>
+        </div>
+      </section>
+
+      <!-- MVP TAB -->
+      <section id="tab-mvp" class="panel">
+        <div class="mvpGrid">
+          <div class="mvpHeader">
+            <div class="mvpTitle">MVP Odds</div>
+            <div class="mvpSub">Pulled live from your published CSV</div>
+          </div>
+
+          <div class="mvpCard">
+            <div class="mvpTools">
+              <input id="mvpSearch" class="input" placeholder="Search player or team…" />
+              <select id="mvpSort" class="select">
+                <option value="prob">Sort: Probability</option>
+                <option value="score">Sort: MVP Score</option>
+                <option value="team">Sort: Team</option>
+              </select>
+            </div>
+
+            <div class="tableWrap">
+              <table class="table" id="mvpTable">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Player</th>
+                    <th>Team</th>
+                    <th>Record</th>
+                    <th>Prob</th>
+                    <th>American</th>
+                    <th>Decimal</th>
+                    <th>Score</th>
+                  </tr>
+                </thead>
+                <tbody id="mvpTbody">
+                  <tr><td colspan="8" class="mutedCell">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="footNote">
+              <span class="badge">WIP</span>
+              Odds rendering is clean + sortable; deeper analytics can be added next.
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
 
