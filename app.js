@@ -25,6 +25,22 @@
     [TEAM_B.name.toLowerCase()]: TEAM_B.logoFile,
   };
 
+  // TFL-provided team code mapping -> display name + logo slug
+  // NOTE: update or extend as codes evolve.
+  const TEAM_CODE_MAP = {
+    "0": { name: "Arizona Cardinals", logo: "cards" },
+    "7": { name: "Cincinnati Bengals", logo: "bengals" },
+    "13": { name: "San Francisco 49ers", logo: "sanfran" },
+    "14": { name: "Dallas Cowboys", logo: "cowboys" },
+    "21": { name: "New York Giants", logo: "giants" },
+    "29": { name: "Arizona Cardinals", logo: "cards" },
+    "35": { name: "Cincinnati Bengals", logo: "bengals" },
+    "42": { name: "San Francisco 49ers", logo: "sanfran" },
+    "49": { name: "Dallas Cowboys", logo: "cowboys" },
+    "56": { name: "New York Giants", logo: "giants" },
+    "63": { name: "Arizona Cardinals", logo: "cards" },
+  };
+
   // =======================
   // STATE / DOM
   // =======================
@@ -372,6 +388,10 @@
       return clampProb(p);
     };
 
+    const last = norm(rows[rows.length - 1]);
+    const teamA = String(pick(last, ["team a", "away", "team_a_code"]) || "Team A").trim();
+    const teamB = String(pick(last, ["team b", "home", "team_b_code"]) || "Team B").trim();
+
     const snapshots = rows.map((row, i) => {
       const r = norm(row);
 
@@ -476,12 +496,15 @@
     const home = smoothSeries(snapshots.map((s) => toPct(s.winProbHome)));
     const away = smoothSeries(snapshots.map((s) => toPct(s.winProbAway)));
 
+    const teamAInfo = resolveTeam(teamA);
+    const teamBInfo = resolveTeam(teamB);
+
     state.baseline = baseline;
 
     if (els.baselineValue) els.baselineValue.textContent = baseline != null ? `${(baseline * 100).toFixed(1)}%` : "—";
     if (els.pregameTag) els.pregameTag.textContent = baseline != null ? `Pregame baseline: ${(baseline * 100).toFixed(1)}%` : "Pregame baseline: —";
 
-    updateChart(labels, home, away, TEAM_A.name, TEAM_B.name);
+    updateChart(labels, home, away, teamAInfo.displayName, teamBInfo.displayName);
 
     const latest = snapshots[snapshots.length - 1];
 
@@ -491,15 +514,15 @@
       els.gameStatus.classList.toggle("badge--ghost", isFinal);
     }
 
-    if (els.teamAName) els.teamAName.textContent = TEAM_A.name;
-    if (els.teamBName) els.teamBName.textContent = TEAM_B.name;
+    if (els.teamAName) els.teamAName.textContent = teamAInfo.displayName;
+    if (els.teamBName) els.teamBName.textContent = teamBInfo.displayName;
 
     if (els.teamAScore) els.teamAScore.textContent = String(latest.scoreA ?? 0);
     if (els.teamBScore) els.teamBScore.textContent = String(latest.scoreB ?? 0);
 
     if (els.possession)
       els.possession.textContent = latest.possession
-        ? `Possession: ${latest.possession}`
+        ? `Possession: ${resolveTeam(latest.possession).displayName}`
         : "Possession —";
     if (els.quarter) els.quarter.textContent = latest.quarter ? `Q${latest.quarter}` : "Q-";
     if (els.clock) els.clock.textContent = latest.minuteLeft != null ? `${formatClock(latest.minuteLeft)} ML` : "ML —";
@@ -507,12 +530,16 @@
     if (els.downDistance) els.downDistance.textContent = latest.down ? `Down: ${latest.down}` : "Down —";
     if (els.ytg) els.ytg.textContent = latest.ytg || latest.distance ? `${latest.ytg || latest.distance} YTG` : "YTG —";
 
+    const resolvedTeamList = teams.map((t) => resolveTeam(t).displayName);
+
     if (els.teamListChip)
-      els.teamListChip.textContent = teams.length ? `Teams: ${teams.join(", ")}` : "Teams: —";
+      els.teamListChip.textContent = resolvedTeamList.length
+        ? `Teams: ${resolvedTeamList.join(", ")}`
+        : "Teams: —";
     if (els.lastUpdate) els.lastUpdate.textContent = `Last update: ${latest.update}`;
 
-    setLogo(els.teamALogo, TEAM_A.logoFile);
-    setLogo(els.teamBLogo, TEAM_B.logoFile);
+    setLogo(els.teamALogo, teamAInfo.logoKey);
+    setLogo(els.teamBLogo, teamBInfo.logoKey);
 
     const metrics = analyzeGame(home, labels);
     if (els.momentumValue) els.momentumValue.textContent = metrics.momentum;
@@ -733,19 +760,29 @@
     return Math.min(MAX_DISPLAY_PROB, Math.max(MIN_DISPLAY_PROB, normalized));
   }
 
+  function normalizeTeamKey(name) {
+    return String(name || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  function resolveTeam(raw) {
+    const cleaned = String(raw ?? "").trim();
+    if (!cleaned) return { displayName: "Team", logoKey: "" };
+
+    const codeMatch = TEAM_CODE_MAP[cleaned];
+    const displayName = codeMatch?.name || cleaned;
+    const logoKey = codeMatch?.logo || normalizeTeamKey(displayName);
+
+    return { displayName, logoKey };
+  }
+
   function formatClock(minutesLeft) {
     if (minutesLeft == null || Number.isNaN(minutesLeft)) return "0:00";
     const totalSeconds = Math.max(0, Math.round(minutesLeft * 60));
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = String(totalSeconds % 60).padStart(2, "0");
     return `${minutes}:${seconds}`;
-  }
-
-  function formatElapsed(elapsedMinutes) {
-    if (elapsedMinutes == null || Number.isNaN(elapsedMinutes)) return "0:00";
-    const minutes = Math.floor(elapsedMinutes);
-    const seconds = Math.round((elapsedMinutes - minutes) * 60);
-    return `${minutes}:${String(seconds).padStart(2, "0")}`;
   }
 
   function toPct(value) {
