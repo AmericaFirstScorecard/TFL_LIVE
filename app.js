@@ -1,6 +1,6 @@
 (() => {
-  const MATCHUP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQsmXFNV0/pub?output=csv';
-  const MVP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQsmXO8ymk/pub?output=csv';
+  const MATCHUP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv';
+  const MVP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQp0jxVIwA59hH031QxJFBsXdQVIi7fNdPS5Ra2w1lK2UYA08rC0moSSqoKPSFL8BRZFh_hC4cO8ymk/pub?output=csv';
   const POLL_MS = 30_000;
   const MIN_DISPLAY_PROB = 0.01;
   const MAX_DISPLAY_PROB = 0.99;
