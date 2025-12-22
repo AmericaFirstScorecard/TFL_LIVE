@@ -6,31 +6,50 @@ def main():
     if not PIL_OK:
         raise RuntimeError("Pillow required: pip install pillow")
 
-    # Where we read/write in the repo (Actions-friendly)
+    # Resolve paths relative to this script location (works in GitHub Actions + locally)
+    repo_root = Path(__file__).resolve().parent
+
+    # ---- Allow overrides via GitHub Actions env vars later ----
+    # Logos (repo-relative defaults)
+    global LOGO_A_PATH, LOGO_B_PATH
+    LOGO_A_PATH = os.environ.get("LOGO_A_PATH", str(repo_root / "logos" / "giants.png"))
+    LOGO_B_PATH = os.environ.get("LOGO_B_PATH", str(repo_root / "logos" / "bengals.png"))
+
+    # CSV + output (repo-relative defaults)
     global CSV_PATH, OUT_PATH
-    CSV_PATH = os.environ.get("CSV_PATH", CSV_PATH)     # default snapshot.csv
-    OUT_PATH = os.environ.get("OUT_PATH", OUT_PATH)     # default site/latest.png
+    CSV_PATH = os.environ.get("CSV_PATH", str(repo_root / "snapshot.csv"))
+    OUT_PATH = os.environ.get("OUT_PATH", str(repo_root / "site" / "latest.png"))
 
+    # Optional text overrides (keep your defaults if not set)
+    global LEAGUE_NAME, WEEK_LABEL, TEAM_A_NAME, TEAM_B_NAME
+    LEAGUE_NAME = os.environ.get("LEAGUE_NAME", LEAGUE_NAME)
+    WEEK_LABEL = os.environ.get("WEEK_LABEL", WEEK_LABEL)
+    TEAM_A_NAME = os.environ.get("TEAM_A_NAME", TEAM_A_NAME)
+    TEAM_B_NAME = os.environ.get("TEAM_B_NAME", TEAM_B_NAME)
+
+    # ---- Live Sheet support (we’ll wire this up next) ----
+    # If SHEET_CSV_URL is set, we download it into CSV_PATH each run.
     sheet_url = os.environ.get("SHEET_CSV_URL", "").strip()
-
-    # If a live Sheet URL is provided, download it every run
     if sheet_url:
         Path(CSV_PATH).parent.mkdir(parents=True, exist_ok=True)
-        req = urllib.request.Request(
-            sheet_url,
-            headers={"User-Agent": "Mozilla/5.0 (GitHub Actions)"},
-        )
+        req = urllib.request.Request(sheet_url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=30) as r:
-            data = r.read()
-        Path(CSV_PATH).write_bytes(data)
-        print("Downloaded CSV from Google Sheet →", CSV_PATH)
+            Path(CSV_PATH).write_bytes(r.read())
+        print("Downloaded CSV from Google Sheet ->", CSV_PATH)
 
+    # ---- Basic checks ----
     if not os.path.exists(CSV_PATH):
         raise FileNotFoundError(f"CSV not found: {os.path.abspath(CSV_PATH)}")
 
-    # Ensure output folder exists
+    # Logos are optional; if missing your code will simply not paste them
+    if not os.path.exists(LOGO_A_PATH):
+        print("WARNING: LOGO_A_PATH not found:", LOGO_A_PATH)
+    if not os.path.exists(LOGO_B_PATH):
+        print("WARNING: LOGO_B_PATH not found:", LOGO_B_PATH)
+
     Path(OUT_PATH).parent.mkdir(parents=True, exist_ok=True)
 
+    # ---- Run your existing pipeline exactly as-is ----
     fieldnames, rows = read_csv_rows_until_empty(CSV_PATH)
     mapping = build_header_map(fieldnames)
     snaps = parse_snapshots(rows, mapping)
