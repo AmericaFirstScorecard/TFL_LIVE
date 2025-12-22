@@ -1,6 +1,6 @@
 (() => {
-  const MATCHUP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQsmXFNV0/pub?output=csv';
-  const MVP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQsmXO8ymk/pub?output=csv';
+  const MATCHUP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv';
+  const MVP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQp0jxVIwA59hH031QxJFBsXdQVIi7fNdPS5Ra2w1lK2UYA08rC0moSSqoKPSFL8BRZFh_hC4cO8ymk/pub?output=csv';
   const POLL_MS = 30_000;
   const MIN_DISPLAY_PROB = 0.01;
   const MAX_DISPLAY_PROB = 0.99;
@@ -9,22 +9,29 @@
   const BIG_SWING_THRESHOLD = 0.12;
 
   const LOGO_MAP = {
-    cards: 'Cards.png',
-    cardinals: 'Cards.png',
-    'arizona cardinals': 'Cards.png',
-    bengals: 'bengals.png',
-    'cincinnati bengals': 'bengals.png',
-    '49ers': 'Sanfran.png',
-    niners: 'Sanfran.png',
-    sanfran: 'Sanfran.png',
-    'san fran': 'Sanfran.png',
-    'san francisco': 'Sanfran.png',
-    'san francisco 49ers': 'Sanfran.png',
-    cowboys: 'cowboys.png',
-    'dallas cowboys': 'cowboys.png',
-    giants: 'giants.png',
-    'new york giants': 'giants.png',
-  };
+  cards: 'Cards.png',
+  cardinals: 'Cards.png',
+  'arizona cardinals': 'Cards.png',
+  lou: 'Cards.png',
+  louis: 'Cards.png',
+
+  bengals: 'bengals.png',
+  'cincinnati bengals': 'bengals.png',
+
+  '49ers': 'Sanfran.png',
+  'sanfran': 'Sanfran.png',
+  'san fran': 'Sanfran.png',
+  'san francisco': 'Sanfran.png',
+  'san francisco 49ers': 'Sanfran.png',
+  sf: 'Sanfran.png',
+
+  cowboys: 'cowboys.png',
+  'dallas cowboys': 'cowboys.png',
+
+  giants: 'giants.png',
+  'new york giants': 'giants.png',
+};
+
 
   const state = {
     chart: null,
@@ -270,71 +277,158 @@
   }
 
   function parseMatchupCSV(text) {
-    const rows = d3.csvParseRows(text).filter((r) => r.some((c) => (c || '').trim() !== ''));
-    if (!rows.length) return { snapshots: [], teamA: 'Team A', teamB: 'Team B', teams: [] };
-    const header = rows[0].map((c) => c.trim());
-    const dataRows = rows.slice(1).map((row) => ({
-      raw: row,
-      map: Object.fromEntries(header.map((h, idx) => [h.trim().toLowerCase(), row[idx]])),
-    }));
-
-    const findIdx = (keys) => {
-      const lowered = header.map((h) => h.trim().toLowerCase());
-      return lowered.findIndex((h) => keys.some((k) => h.includes(k)));
-    };
-
-    const idxUpdate = findIdx(['update']) >= 0 ? findIdx(['update']) : 0;
-    const idxMinutes = findIdx(['minutes left', 'minutes_left', 'ml', 'mins']);
-    const idxHomeProb = findIdx(['home win', 'home_wp', 'prob_b', 'team b', 'winprobhome']);
-    const idxAwayProb = findIdx(['away win', 'away_wp', 'prob_a', 'team a', 'winprobaway']);
-    const idxScoreA = findIdx(['score a', 'score_a', 'away score', 'a score']);
-    const idxScoreB = findIdx(['score b', 'score_b', 'home score', 'b score']);
-    const idxPossession = findIdx(['possession', 'poss']);
-    const idxQuarter = findIdx(['quarter', 'qtr']);
-    const idxDown = findIdx(['down']);
-    const idxDistance = findIdx(['distance', 'dist']);
-    const idxYtg = findIdx(['ytg', 'to-go']);
-    const idxPregame = findIdx(['pregame', 'baseline']);
-
-    const snapshots = dataRows.map(({ raw, map }, i) => {
-      const winProbHome = parseNumber(raw[idxHomeProb] ?? map['win prob'] ?? map['home'] ?? map['home wpct']);
-      const winProbAway = parseNumber(raw[idxAwayProb] ?? map['away'] ?? (winProbHome != null ? 1 - winProbHome : null));
-      const minuteLeft = parseNumber(raw[idxMinutes]) ?? parseNumber(map['minutes left']) ?? null;
-      const updateLabel = raw[idxUpdate] || map['update'] || `U${i + 1}`;
-      const pregame = parseNumber(raw[idxPregame] ?? map['pregame']);
-      return {
-        update: updateLabel,
-        minuteLeft,
-        winProbHome: clampProb(winProbHome),
-        winProbAway: clampProb(winProbAway),
-        scoreA: parseNumber(raw[idxScoreA] ?? map['score a'] ?? null) ?? 0,
-        scoreB: parseNumber(raw[idxScoreB] ?? map['score b'] ?? null) ?? 0,
-        possession: (raw[idxPossession] || '').trim(),
-        quarter: raw[idxQuarter] || '',
-        down: raw[idxDown] || '',
-        distance: raw[idxDistance] || '',
-        ytg: raw[idxYtg] || '',
-        pregame,
-      };
-    });
-
-    const teamA = latestNonEmpty(rows.map((r) => r[2]), 'Team A');
-    const teamB = latestNonEmpty(rows.map((r) => r[3]), 'Team B');
-    const teams = Array.from(
-      new Set(
-        rows
-          .flatMap((r) => r.slice(2, 7))
-          .map((t) => (t || '').trim())
-          .filter(Boolean)
-      )
-    ).slice(0, 5);
-
-    const baseline = clampProb(
-      snapshots.find((s) => s.pregame != null)?.pregame ?? snapshots[0]?.winProbHome
-    );
-
-    return { snapshots, teamA, teamB, teams, baseline };
+  // If Google gives you an HTML page instead of CSV, this will catch it early.
+  if (/<html/i.test(text)) {
+    return { snapshots: [], teamA: 'Team A', teamB: 'Team B', teams: [], baseline: null };
   }
+
+  const data = d3.csvParse(text);
+  if (!data || !data.length) {
+    return { snapshots: [], teamA: 'Team A', teamB: 'Team B', teams: [], baseline: null };
+  }
+
+  const colsLower = (data.columns || []).map((c) => String(c).trim().toLowerCase());
+
+  const pick = (row, keys) => {
+    for (const k of keys) {
+      if (row[k] != null && String(row[k]).trim() !== '') return row[k];
+    }
+    return null;
+  };
+
+  const normalizeRow = (row) => {
+    const out = {};
+    for (const [k, v] of Object.entries(row)) out[String(k).trim().toLowerCase()] = v;
+    return out;
+  };
+
+  const parseMinutesLeft = (val) => {
+    if (val == null) return null;
+    const s = String(val).trim();
+    // mm:ss
+    const m = s.match(/^(\d+):(\d{2})$/);
+    if (m) return parseInt(m[1], 10) + parseInt(m[2], 10) / 60;
+    // number
+    return parseNumber(s);
+  };
+
+  const parseProbRaw = (val) => {
+    const n = parseNumber(val);
+    if (n == null) return null;
+    const p = n > 1 ? n / 100 : n;
+    return clampProb(p);
+  };
+
+  // Prefer Away/Home naming if present, else Team A/Team B.
+  const TEAM_A_KEYS = ['away', 'team a', 'teama'];
+  const TEAM_B_KEYS = ['home', 'team b', 'teamb'];
+
+  const PROB_A_KEYS = [
+    'team a win probability',
+    'away win probability',
+    'team a win prob',
+    'away win prob',
+    'team a wp',
+    'away wp',
+    'team a win %',
+    'away win %',
+  ];
+
+  const PROB_B_KEYS = [
+    'team b win probability',
+    'home win probability',
+    'team b win prob',
+    'home win prob',
+    'team b wp',
+    'home wp',
+    'team b win %',
+    'home win %',
+  ];
+
+  const UPDATE_KEYS = ['update #', 'update', 'u'];
+  const MINUTES_KEYS = ['minutes left', 'minutes_left', 'mins left', 'ml'];
+
+  const SCORE_A_KEYS = ['team a point', 'team a points', 'away points', 'score a', 'away score'];
+  const SCORE_B_KEYS = ['team b point', 'team b points', 'home points', 'score b', 'home score'];
+
+  const HAS_BALL_KEYS = ['team a has ball (1=yes, 0=no)', 'team a has ball', 'has ball', 'possession a'];
+  const QUARTER_KEYS = ['quarter', 'qtr'];
+  const DOWN_KEYS = ['down'];
+  const DISTANCE_KEYS = ['distance', 'dist'];
+  const YTG_KEYS = ['yards to goal', 'ytg', 'to-go', 'to go'];
+
+  const PREGAME_KEYS = ['pregame', 'baseline', 'pregame baseline'];
+
+  // Use last row as the “current teams”
+  const lastRow = normalizeRow(data[data.length - 1]);
+  const teamA = (pick(lastRow, TEAM_A_KEYS) || 'Team A').toString().trim();
+  const teamB = (pick(lastRow, TEAM_B_KEYS) || 'Team B').toString().trim();
+
+  const snapshots = data.map((row, i) => {
+    const r = normalizeRow(row);
+
+    const update = (pick(r, UPDATE_KEYS) || `U${i + 1}`).toString().trim();
+    const minuteLeft = parseMinutesLeft(pick(r, MINUTES_KEYS));
+
+    const probA = parseProbRaw(pick(r, PROB_A_KEYS));
+    const probB = parseProbRaw(pick(r, PROB_B_KEYS));
+
+    // If only Team A prob exists, derive Team B; if only Team B exists, derive Team A.
+    const winProbAway = probA != null ? probA : probB != null ? clampProb(1 - probB) : null;
+    const winProbHome = probB != null ? probB : winProbAway != null ? clampProb(1 - winProbAway) : null;
+
+    const scoreA = parseNumber(pick(r, SCORE_A_KEYS)) ?? 0;
+    const scoreB = parseNumber(pick(r, SCORE_B_KEYS)) ?? 0;
+
+    // possession from 1/0 column if present
+    const hasBall = parseNumber(pick(r, HAS_BALL_KEYS));
+    const possession =
+      hasBall == null ? '' : hasBall === 1 ? teamA : teamB;
+
+    const quarter = (pick(r, QUARTER_KEYS) || '').toString().trim();
+    const down = (pick(r, DOWN_KEYS) || '').toString().trim();
+    const distance = (pick(r, DISTANCE_KEYS) || '').toString().trim();
+    const ytg = (pick(r, YTG_KEYS) || '').toString().trim();
+
+    const pregameRaw = pick(r, PREGAME_KEYS);
+    const pregame = parseProbRaw(pregameRaw);
+
+    return {
+      update,
+      minuteLeft,
+      winProbHome,
+      winProbAway,
+      scoreA,
+      scoreB,
+      possession,
+      quarter,
+      down,
+      distance,
+      ytg,
+      pregame,
+    };
+  });
+
+  const teams = Array.from(new Set([teamA, teamB].filter(Boolean)));
+
+  // Baseline: if "pregame" exists, use it. If it likely represents Team A, convert to Team B to match your `home` series.
+  const pregameColExists = colsLower.some((c) => c.includes('pregame') || c.includes('baseline'));
+  const pregameSample = snapshots.find((s) => s.pregame != null)?.pregame ?? null;
+
+  // Heuristic: if your sheet only provides "Team A Win Probability", then pregame is probably for Team A.
+  const onlyTeamAProb =
+    colsLower.some((c) => PROB_A_KEYS.some((k) => c.includes(k.replaceAll(' ', '')) || c.includes(k))) &&
+    !colsLower.some((c) => PROB_B_KEYS.some((k) => c.includes(k.replaceAll(' ', '')) || c.includes(k)));
+
+  let baseline = null;
+  if (pregameColExists && pregameSample != null) {
+    baseline = onlyTeamAProb ? clampProb(1 - pregameSample) : pregameSample;
+  } else {
+    baseline = snapshots[0]?.winProbHome ?? null;
+  }
+
+  return { snapshots, teamA, teamB, teams, baseline };
+}
 
   function renderMatchup({ snapshots, teamA, teamB, teams, baseline }) {
     const labels = snapshots.map((s) => s.minuteLeft ?? s.update);
@@ -506,9 +600,9 @@
       el.style.backgroundImage = 'linear-gradient(135deg, rgba(96,165,250,0.2), rgba(168,85,247,0.2))';
     }
   }
-
+  
   function logoPath(file) {
-    return `../logos/${file}`;
+    return `logos/${file}`;
   }
 
   function parseMvpCSV(text) {
