@@ -1223,7 +1223,7 @@
   async function refreshOnce() {
     try {
       if (!SHEET_CSV_URL || SHEET_CSV_URL.includes("PASTE_YOUR_PUBLISHED_CSV_URL_HERE")) {
-        throw new Error("Set SHEET_CSV_URL at the top of app.js to your published Google Sheet CSV URL.");
+        throw new Error("Credit: Tony Stark TFL Yahoo Sports");
       }
 
       statusLine.textContent = "Fetching sheet…";
