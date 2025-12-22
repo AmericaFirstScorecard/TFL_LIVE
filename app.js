@@ -92,8 +92,13 @@
     sort: { key: "mvpScore", dir: "desc" },
     lastMvpRecords: [],
     lastStandings: [],
+    newsRecords: [],
     standingsLookup: new Map(),
     lastMatchup: null,
+    lastIsFinal: null,
+    hasShownConfetti: false,
+    matchupVersion: 0,
+    matchupRequestInFlight: 0,
     sortHandlersAttached: false,
     logoExistCache: new Map(), // filename -> boolean
     lastScores: { a: null, b: null },
@@ -148,6 +153,7 @@
     els.teamBScore = id("teamBScore");
     els.teamAScoreDelta = id("teamAScoreDelta");
     els.teamBScoreDelta = id("teamBScoreDelta");
+    els.winnerArrow = id("winnerArrow");
 
     els.possession = id("possession");
     els.quarter = id("quarter");
@@ -176,6 +182,14 @@
     els.standingsError = id("standingsError");
     els.standingsBody = id("standingsTableBody");
     els.standingsStatus = id("standingsStatus");
+
+    els.breakdownGrid = id("breakdownGrid");
+
+    els.newsFeed = id("newsFeed");
+    els.newsLoading = id("newsLoading");
+    els.newsError = id("newsError");
+    els.newsEmpty = id("newsEmpty");
+    els.newsStatus = id("newsStatus");
   }
 
   function initTabs() {
@@ -184,6 +198,7 @@
       win: document.getElementById("tab-win"),
       mvp: document.getElementById("tab-mvp"),
       standings: document.getElementById("tab-standings"),
+      news: document.getElementById("tab-news"),
     };
 
     function setTab(tab) {
@@ -296,8 +311,19 @@
       },
       options: {
         responsive: true,
-        animation: false,
+        animation: {
+          duration: 800,
+          easing: "easeOutQuart",
+        },
         maintainAspectRatio: false,
+        transitions: {
+          active: {
+            animation: {
+              duration: 700,
+              easing: "easeOutCubic",
+            },
+          },
+        },
         plugins: {
           legend: { labels: { color: "#e5e7eb" } },
           tooltip: {
@@ -367,6 +393,8 @@
   async function fetchMatchup() {
     setLoading(els.winLoading, true);
     toggleError(els.winError, false);
+    const requestId = Date.now();
+    state.matchupRequestInFlight = requestId;
 
     const url = overrideUrl("matchup") || MATCHUP_CSV_URL;
 
@@ -374,14 +402,19 @@
       const text = await fetchText(url);
       const parsed = parseMatchupCSV(text);
       if (!parsed.snapshots.length) throw new Error("No matchup rows parsed");
+      if (requestId < state.matchupVersion) return;
+      state.matchupVersion = requestId;
       state.lastMatchup = parsed;
       renderMatchup(parsed);
       setLoading(els.winLoading, false);
     } catch (err) {
       console.error("[matchup]", err);
       showError(els.winError, `Matchup feed error: ${err.message}`);
-      state.lastMatchup = buildSampleMatchup();
-      renderMatchup(state.lastMatchup); // keep app alive
+      if (requestId >= state.matchupVersion) {
+        state.matchupVersion = requestId;
+        state.lastMatchup = buildSampleMatchup();
+        renderMatchup(state.lastMatchup); // keep app alive
+      }
       setLoading(els.winLoading, false);
     }
   }
@@ -391,20 +424,25 @@
     toggleError(els.mvpError, false);
     setLoading(els.standingsLoading, true);
     toggleError(els.standingsError, false);
+    setLoading(els.newsLoading, true);
+    toggleError(els.newsError, false);
 
     const url = overrideUrl("mvp") || MVP_CSV_URL;
 
     try {
       const buffer = await fetchArrayBuffer(url);
-      const { mvpRecords, standings } = parseMvpWorkbook(buffer);
+      const { mvpRecords, standings, news } = parseMvpWorkbook(buffer);
       state.lastMvpRecords = mvpRecords;
       state.lastStandings = standings;
       state.standingsLookup = buildStandingsLookup(standings);
       renderMvp(mvpRecords);
       renderStandings(standings);
+      state.newsRecords = news;
+      renderNews(news);
       if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
       setLoading(els.mvpLoading, false);
       setLoading(els.standingsLoading, false);
+      setLoading(els.newsLoading, false);
     } catch (err) {
       console.error("[mvp]", err);
       showError(els.mvpError, `MVP feed error: ${err.message}`);
@@ -413,9 +451,13 @@
       state.standingsLookup = buildStandingsLookup(state.lastStandings);
       renderMvp(state.lastMvpRecords);
       renderStandings(state.lastStandings);
+      state.newsRecords = buildSampleNews();
+      renderNews(state.newsRecords);
       if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
       setLoading(els.mvpLoading, false);
       setLoading(els.standingsLoading, false);
+      setLoading(els.newsLoading, false);
+      showError(els.newsError, `News feed error: ${err.message}`);
     }
   }
 
@@ -444,6 +486,15 @@
       return null;
     };
 
+    const parseTimeToMinutes = (val) => {
+      if (val == null) return null;
+      const str = String(val).trim();
+      const colon = str.match(/^(\d+):(\d{2})$/);
+      if (colon) return Number(colon[1]) + Number(colon[2]) / 60;
+      const num = parseNumber(str);
+      return Number.isFinite(num) ? num : null;
+    };
+
     const parseMinutesLeft = (val) => {
       if (val == null) return null;
       const s = String(val).trim();
@@ -468,6 +519,84 @@
 
     let rollingScoreA = 0;
     let rollingScoreB = 0;
+    let rollingStats = {};
+
+    const parseTeamStats = (row, prev = {}) => {
+      const withFallback = (val, key) => (val != null ? val : prev[key] ?? null);
+      const parseConversion = (made, att, combined) => {
+        if (combined != null && combined !== "") return String(combined);
+        if (made == null && att == null) return null;
+        if (att == null) return `${made ?? 0}`;
+        return `${made ?? 0}/${att}`;
+      };
+
+      const totalYardsA = withFallback(
+        parseNumber(pick(row, ["team a total yards", "team a yards", "total yards a", "yards a"])),
+        "totalYardsA"
+      );
+      const totalYardsB = withFallback(
+        parseNumber(pick(row, ["team b total yards", "team b yards", "total yards b", "yards b"])),
+        "totalYardsB"
+      );
+      const firstDownsA = withFallback(parseNumber(pick(row, ["team a first downs", "first downs a"])), "firstDownsA");
+      const firstDownsB = withFallback(parseNumber(pick(row, ["team b first downs", "first downs b"])), "firstDownsB");
+
+      const thirdMadeA = parseNumber(pick(row, ["team a 3rd made", "team a third made", "team a 3rd conversions"]));
+      const thirdAttA = parseNumber(pick(row, ["team a 3rd att", "team a third att", "team a 3rd attempts"]));
+      const thirdMadeB = parseNumber(pick(row, ["team b 3rd made", "team b third made", "team b 3rd conversions"]));
+      const thirdAttB = parseNumber(pick(row, ["team b 3rd att", "team b third att", "team b 3rd attempts"]));
+
+      const fourthMadeA = parseNumber(pick(row, ["team a 4th made", "team a fourth made", "team a 4th conversions"]));
+      const fourthAttA = parseNumber(pick(row, ["team a 4th att", "team a fourth att", "team a 4th attempts"]));
+      const fourthMadeB = parseNumber(pick(row, ["team b 4th made", "team b fourth made", "team b 4th conversions"]));
+      const fourthAttB = parseNumber(pick(row, ["team b 4th att", "team b fourth att", "team b 4th attempts"]));
+
+      const turnoversA = withFallback(parseNumber(pick(row, ["team a turnovers", "turnovers a", "giveaways a"])), "turnoversA");
+      const turnoversB = withFallback(parseNumber(pick(row, ["team b turnovers", "turnovers b", "giveaways b"])), "turnoversB");
+
+      const penaltiesA = withFallback(parseNumber(pick(row, ["penalties a", "team a penalties"])), "penaltiesA");
+      const penaltiesB = withFallback(parseNumber(pick(row, ["penalties b", "team b penalties"])), "penaltiesB");
+
+      const topA = withFallback(parseTimeToMinutes(pick(row, ["time of possession a", "top a"])), "topA");
+      const topB = withFallback(parseTimeToMinutes(pick(row, ["time of possession b", "top b"])), "topB");
+
+      const yardsPerPlayA = withFallback(parseNumber(pick(row, ["yards per play a", "team a ypp"])), "yardsPerPlayA");
+      const yardsPerPlayB = withFallback(parseNumber(pick(row, ["yards per play b", "team b ypp"])), "yardsPerPlayB");
+
+      const redZoneA = withFallback(pick(row, ["team a redzone", "red zone a", "rza"]), "redZoneA");
+      const redZoneB = withFallback(pick(row, ["team b redzone", "red zone b", "rzb"]), "redZoneB");
+
+      return {
+        totalYardsA,
+        totalYardsB,
+        firstDownsA,
+        firstDownsB,
+        thirdMadeA: withFallback(thirdMadeA, "thirdMadeA"),
+        thirdAttA: withFallback(thirdAttA, "thirdAttA"),
+        thirdMadeB: withFallback(thirdMadeB, "thirdMadeB"),
+        thirdAttB: withFallback(thirdAttB, "thirdAttB"),
+        fourthMadeA: withFallback(fourthMadeA, "fourthMadeA"),
+        fourthAttA: withFallback(fourthAttA, "fourthAttA"),
+        fourthMadeB: withFallback(fourthMadeB, "fourthMadeB"),
+        fourthAttB: withFallback(fourthAttB, "fourthAttB"),
+        turnoversA,
+        turnoversB,
+        penaltiesA,
+        penaltiesB,
+        topA,
+        topB,
+        yardsPerPlayA,
+        yardsPerPlayB,
+        redZoneA,
+        redZoneB,
+        thirdConvA: withFallback(parseConversion(thirdMadeA, thirdAttA, pick(row, ["team a 3rd conv", "team a third conv"])), "thirdConvA"),
+        thirdConvB: withFallback(parseConversion(thirdMadeB, thirdAttB, pick(row, ["team b 3rd conv", "team b third conv"])), "thirdConvB"),
+        fourthConvA: withFallback(parseConversion(fourthMadeA, fourthAttA, pick(row, ["team a 4th conv", "team a fourth conv"])), "fourthConvA"),
+        fourthConvB: withFallback(parseConversion(fourthMadeB, fourthAttB, pick(row, ["team b 4th conv", "team b fourth conv"])), "fourthConvB"),
+      };
+    };
+
+    let latestStats = null;
 
     const snapshots = snapshotRows.map((row, i) => {
       const r = norm(row);
@@ -499,6 +628,9 @@
       const ytg = String(pick(r, ["yards to goal", "ytg"]) || "").trim();
 
       const pregame = parseProb(pick(r, ["pregame", "baseline", "pregame win prob"])) ?? null;
+      const teamStats = parseTeamStats(r, rollingStats);
+      rollingStats = teamStats;
+      latestStats = teamStats;
 
       return {
         update,
@@ -513,6 +645,7 @@
         distance,
         ytg,
         pregame,
+        teamStats,
       };
     });
 
@@ -520,7 +653,7 @@
       snapshots.find((s) => s.pregame != null)?.pregame ?? snapshots[0]?.winProbHome ?? null;
     const teams = Array.from(new Set([teamAName, teamBName].filter(Boolean)));
 
-    return { snapshots, teams, baseline, teamA: teamAName, teamB: teamBName };
+    return { snapshots, teams, baseline, teamA: teamAName, teamB: teamBName, latestStats };
   }
 
   function parseMvpWorkbook(buffer) {
@@ -532,6 +665,7 @@
     const rushing = parseRushingSheet(workbook);
     const receiving = parseReceivingSheet(workbook);
     const defense = parseDefenseSheet(workbook);
+    const news = parseNewsSheet(workbook);
 
     const players = new Map();
     const ensure = (name) => {
@@ -611,6 +745,7 @@
       mvpRecords: records,
       standings,
       roster,
+      news,
     };
   }
 
@@ -680,6 +815,30 @@
         defTd: parseNumber(row["Def TD"]),
       }))
       .filter((r) => r.player);
+  }
+
+  function parseNewsSheet(workbook) {
+    const sheetName = workbook.SheetNames.find((n) => n.toLowerCase().includes("news"));
+    if (!sheetName) return [];
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+    return rows
+      .map((row, idx) => {
+        const rawDate = row.Date || row.date || row.DATE || row.Timestamp || row.timestamp;
+        const dateValue = parseDateValue(rawDate);
+        return {
+          id: idx,
+          date: dateValue?.formatted ?? String(rawDate || "").trim(),
+          dateValue: dateValue?.value ?? null,
+          headline: String(row.Headline || row.headline || "").trim(),
+          body: String(row.News || row.news || row.Story || "").trim(),
+          author: String(row.Author || row.author || "").trim(),
+          verified: String(row["Verified Writer"] || row.verified || "").toLowerCase() === "true",
+          likes: parseNumber(row.Likes),
+          views: parseNumber(row.Views || row["Views..."]),
+          image: String(row["image route (if applicable)"] || row.image || row.photo || "").trim(),
+        };
+      })
+      .filter((r) => r.headline || r.body);
   }
 
   function computeMvpScore(rec, wins) {
@@ -768,6 +927,8 @@
     const latest = snapshots[snapshots.length - 1];
 
     const isFinal = latest.minuteLeft != null && latest.minuteLeft <= 0;
+    const previousFinal = state.lastIsFinal;
+    if (!isFinal) state.hasShownConfetti = false;
     if (els.gameStatus) {
       els.gameStatus.textContent = isFinal ? "Final" : "Live";
       els.gameStatus.classList.toggle("badge--ghost", isFinal);
@@ -807,12 +968,27 @@
     setLogo(els.teamALogo, teamAInfo.logoKey);
     setLogo(els.teamBLogo, teamBInfo.logoKey);
 
+    const winner =
+      isFinal && latest.scoreA != null && latest.scoreB != null && latest.scoreA !== latest.scoreB
+        ? latest.scoreA > latest.scoreB
+          ? "A"
+          : "B"
+        : null;
+    applyOutcomeStyles(winner);
+    if (previousFinal === false && isFinal && winner) {
+      const winnerTeam = winner === "A" ? teamAInfo : teamBInfo;
+      launchConfetti(teamColor(teamColorKey(winnerTeam)));
+    }
+    if (previousFinal === null) state.lastIsFinal = isFinal;
+    state.lastIsFinal = isFinal;
+
     const metrics = analyzeGame(home, snapshots);
     if (els.momentumValue) els.momentumValue.textContent = metrics.momentum;
     if (els.swingValue) els.swingValue.textContent = metrics.bigSwing;
     if (els.clutchValue) els.clutchValue.textContent = metrics.clutch;
 
     renderPills(metrics, pregameBaseline, liveBaseline);
+    renderBreakdown(latest.teamStats, teamAInfo, teamBInfo);
 
     toggleError(els.winError, false);
     setLoading(els.winLoading, false);
@@ -831,7 +1007,7 @@
 
     applyTeamColors(teamA, teamB);
 
-    state.chart.update("none");
+    state.chart.update();
   }
 
   function renderMvp(records) {
@@ -973,6 +1149,55 @@
     if (els.standingsStatus) els.standingsStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
   }
 
+  function renderNews(news) {
+    if (!els.newsFeed) return;
+    els.newsFeed.innerHTML = "";
+    if (!news || !news.length) {
+      if (els.newsEmpty) els.newsEmpty.hidden = false;
+      return;
+    }
+    if (els.newsEmpty) els.newsEmpty.hidden = true;
+    toggleError(els.newsError, false);
+
+    const sorted = [...news].sort((a, b) => (a.dateValue ?? 0) - (b.dateValue ?? 0));
+    const frag = document.createDocumentFragment();
+
+    sorted.forEach((item) => {
+      const card = document.createElement("div");
+      card.className = "news-card";
+
+      const image = document.createElement("div");
+      image.className = "news-card__image";
+      if (item.image) image.style.backgroundImage = `url(${item.image})`;
+      card.appendChild(image);
+
+      const body = document.createElement("div");
+      const headline = document.createElement("div");
+      headline.className = "news-card__headline";
+      headline.textContent = item.headline || "Breaking news";
+
+      const meta = document.createElement("div");
+      meta.className = "news-card__meta";
+      if (item.date) meta.appendChild(textSpan(item.date));
+      if (item.author) meta.appendChild(textSpan(item.verified ? `${item.author} ✅` : item.author));
+      if (item.likes != null) meta.appendChild(textSpan(`❤️ ${formatCount(item.likes)}`));
+      if (item.views != null) meta.appendChild(textSpan(`👁️ ${formatCount(item.views)}`));
+
+      const story = document.createElement("div");
+      story.className = "news-card__body";
+      story.textContent = item.body || "—";
+
+      body.appendChild(headline);
+      body.appendChild(meta);
+      body.appendChild(story);
+      card.appendChild(body);
+      frag.appendChild(card);
+    });
+
+    els.newsFeed.appendChild(frag);
+    if (els.newsStatus) els.newsStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  }
+
   function attachSortHandlersOnce() {
     if (state.sortHandlersAttached) return;
     state.sortHandlersAttached = true;
@@ -1072,6 +1297,48 @@
     });
   }
 
+  function renderBreakdown(stats, teamAInfo, teamBInfo) {
+    if (!els.breakdownGrid) return;
+    els.breakdownGrid.innerHTML = "";
+
+    if (!stats) {
+      const msg = document.createElement("div");
+      msg.className = "state state--empty";
+      msg.textContent = "Team stats will appear once provided.";
+      els.breakdownGrid.appendChild(msg);
+      return;
+    }
+
+    const cards = [
+      { label: "Total yards", a: formatCount(stats.totalYardsA), b: formatCount(stats.totalYardsB) },
+      { label: "First downs", a: formatCount(stats.firstDownsA), b: formatCount(stats.firstDownsB) },
+      { label: "3rd down", a: formatConversionDisplay(stats.thirdConvA, stats.thirdMadeA, stats.thirdAttA), b: formatConversionDisplay(stats.thirdConvB, stats.thirdMadeB, stats.thirdAttB) },
+      { label: "4th down", a: formatConversionDisplay(stats.fourthConvA, stats.fourthMadeA, stats.fourthAttA), b: formatConversionDisplay(stats.fourthConvB, stats.fourthMadeB, stats.fourthAttB) },
+      { label: "Turnovers", a: formatCount(stats.turnoversA), b: formatCount(stats.turnoversB) },
+      { label: "Penalties", a: formatCount(stats.penaltiesA), b: formatCount(stats.penaltiesB) },
+      { label: "Yards/play", a: formatScore(stats.yardsPerPlayA), b: formatScore(stats.yardsPerPlayB) },
+      { label: "Red zone", a: stats.redZoneA || "—", b: stats.redZoneB || "—" },
+      { label: "TOP (min)", a: formatPossessionClock(stats.topA), b: formatPossessionClock(stats.topB) },
+    ];
+
+    const frag = document.createDocumentFragment();
+    cards.forEach((card) => {
+      const div = document.createElement("div");
+      div.className = "breakdown-card";
+      div.innerHTML = `
+        <div class="breakdown-card__heading">
+          <span>${escapeHtml(card.label)}</span>
+          <span class="breakdown-card__stat">${escapeHtml(teamAInfo.displayName)}</span>
+          <span class="breakdown-card__stat">${escapeHtml(teamBInfo.displayName)}</span>
+        </div>
+        <div class="breakdown-card__stat">${escapeHtml(teamAInfo.displayName)}: ${escapeHtml(String(card.a ?? "—"))}</div>
+        <div class="breakdown-card__stat">${escapeHtml(teamBInfo.displayName)}: ${escapeHtml(String(card.b ?? "—"))}</div>
+      `;
+      frag.appendChild(div);
+    });
+    els.breakdownGrid.appendChild(frag);
+  }
+
   // =======================
   // HELPERS
   // =======================
@@ -1086,6 +1353,23 @@
     if (value == null || Number.isNaN(value)) return "";
     const rounded = value.toFixed(1);
     return `${value >= 0 ? "+" : ""}${rounded}%`;
+  }
+
+  function parseDateValue(raw) {
+    if (!raw) return null;
+    if (raw instanceof Date && !Number.isNaN(raw)) {
+      return { value: raw.getTime(), formatted: raw.toLocaleString() };
+    }
+    if (typeof raw === "number" && XLSX?.SSF?.parse_date_code) {
+      const parsed = XLSX.SSF.parse_date_code(raw);
+      if (parsed) {
+        const d = new Date(parsed.y, parsed.m - 1, parsed.d, parsed.H || 0, parsed.M || 0);
+        return { value: d.getTime(), formatted: d.toLocaleString() };
+      }
+    }
+    const date = new Date(raw);
+    if (!Number.isNaN(date)) return { value: date.getTime(), formatted: date.toLocaleString() };
+    return { value: null, formatted: String(raw) };
   }
 
   function buildLogoMap() {
@@ -1183,6 +1467,14 @@
     return `${minutes}:${seconds}`;
   }
 
+  function formatPossessionClock(minutes) {
+    if (minutes == null || Number.isNaN(minutes)) return "—";
+    const totalSeconds = Math.round(minutes * 60);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = String(totalSeconds % 60).padStart(2, "0");
+    return `${mins}:${secs}`;
+  }
+
   function pickTeamHeaders(columns) {
     const found = findTeamColumns(columns);
     const fallbackA = columns.find((c) => /team\s*a/i.test(c));
@@ -1235,6 +1527,11 @@
     return Number(value).toFixed(1);
   }
 
+  function formatCount(value) {
+    if (value == null || Number.isNaN(value)) return "—";
+    return Number(value).toLocaleString();
+  }
+
   function formatRecord(row) {
     if (!row) return "Record —";
     const w = row.wins ?? "—";
@@ -1247,6 +1544,13 @@
     const parts = [w, l];
     if (d != null) parts.push(d);
     return `${parts.join("-")}${pct}`;
+  }
+
+  function formatConversionDisplay(combined, made, att) {
+    if (combined != null && combined !== "") return combined;
+    if (made == null && att == null) return "—";
+    if (att == null) return `${made ?? 0}`;
+    return `${made ?? 0}/${att}`;
   }
 
   function initials(name) {
@@ -1266,6 +1570,12 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
+  }
+
+  function textSpan(text) {
+    const span = document.createElement("span");
+    span.textContent = text;
+    return span;
   }
 
   function buildStandingsLookup(rows) {
@@ -1466,6 +1776,81 @@
     bContainer?.classList.toggle("team--has-ball", teamBHasBall);
   }
 
+  function applyOutcomeStyles(winner) {
+    const aContainer = els.teamALogo?.closest(".team");
+    const bContainer = els.teamBLogo?.closest(".team");
+    aContainer?.classList.remove("team--winner", "team--loser");
+    bContainer?.classList.remove("team--winner", "team--loser");
+    if (els.winnerArrow) {
+      els.winnerArrow.textContent = "";
+      els.winnerArrow.style.opacity = "0";
+    }
+    if (!winner) return;
+
+    if (winner === "A") {
+      aContainer?.classList.add("team--winner");
+      bContainer?.classList.add("team--loser");
+      if (els.winnerArrow) {
+        els.winnerArrow.textContent = "⬅";
+        els.winnerArrow.style.opacity = "1";
+      }
+    } else if (winner === "B") {
+      bContainer?.classList.add("team--winner");
+      aContainer?.classList.add("team--loser");
+      if (els.winnerArrow) {
+        els.winnerArrow.textContent = "➡";
+        els.winnerArrow.style.opacity = "1";
+      }
+    }
+  }
+
+  function launchConfetti(color = "#60a5fa") {
+    if (state.hasShownConfetti) return;
+    state.hasShownConfetti = true;
+    const canvas = document.createElement("canvas");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    canvas.style.position = "fixed";
+    canvas.style.inset = "0";
+    canvas.style.pointerEvents = "none";
+    canvas.style.zIndex = "9999";
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext("2d");
+
+    const pieces = Array.from({ length: 120 }).map(() => ({
+      x: Math.random() * canvas.width,
+      y: -Math.random() * canvas.height,
+      size: 6 + Math.random() * 6,
+      rotation: Math.random() * Math.PI * 2,
+      speed: 2 + Math.random() * 3,
+      drift: -2 + Math.random() * 4,
+      color,
+    }));
+
+    const decay = 70;
+    let frame = 0;
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      pieces.forEach((p) => {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+        ctx.restore();
+
+        p.y += p.speed;
+        p.x += p.drift;
+        p.rotation += 0.05;
+      });
+      frame += 1;
+      if (frame < decay) requestAnimationFrame(draw);
+      else document.body.removeChild(canvas);
+    }
+    requestAnimationFrame(draw);
+  }
+
   function buildSampleMatchup() {
     const samples = [];
     const pregame = 0.62;
@@ -1474,6 +1859,36 @@
     for (let i = 12; i >= 0; i--) {
       const drift = (Math.sin((12 - i) / 3) + Math.random() * 0.5 - 0.25) * 3;
       current = Math.min(99, Math.max(1, current + drift));
+
+      const drives = 12 - i + 1;
+      const teamStats = {
+        totalYardsA: 250 + drives * 8,
+        totalYardsB: 240 + drives * 6,
+        firstDownsA: 10 + drives,
+        firstDownsB: 9 + drives,
+        thirdMadeA: 4,
+        thirdAttA: 9,
+        thirdMadeB: 3,
+        thirdAttB: 8,
+        fourthMadeA: 1,
+        fourthAttA: 2,
+        fourthMadeB: 0,
+        fourthAttB: 1,
+        turnoversA: 1,
+        turnoversB: 0,
+        penaltiesA: 3,
+        penaltiesB: 4,
+        yardsPerPlayA: 5.9,
+        yardsPerPlayB: 5.2,
+        redZoneA: "2/3",
+        redZoneB: "1/2",
+        topA: 16,
+        topB: 13,
+        thirdConvA: "4/9",
+        thirdConvB: "3/8",
+        fourthConvA: "1/2",
+        fourthConvB: "0/1",
+      };
 
       samples.push({
         update: `U${12 - i + 1}`,
@@ -1488,6 +1903,7 @@
         distance: 10,
         ytg: 10,
         pregame,
+        teamStats,
       });
     }
 
@@ -1546,6 +1962,35 @@
       { team: "49ERS", games: 7, wins: 4, draws: 1, losses: 2, plusMinus: -16, points: 13, winPct: 0.64 },
       { team: "DAL", games: 8, wins: 4, draws: 0, losses: 4, plusMinus: -88, points: 12, winPct: 0.5 },
       { team: "NY", games: 8, wins: 0, draws: 0, losses: 8, plusMinus: -93, points: 0, winPct: 0 },
+    ];
+  }
+
+  function buildSampleNews() {
+    return [
+      {
+        id: 1,
+        date: new Date().toLocaleString(),
+        dateValue: Date.now(),
+        headline: "League Roundup",
+        body: "Quick hits from around the league with injury news, roster moves, and standout performances.",
+        author: "Desk Reporter",
+        verified: true,
+        likes: 1200,
+        views: 45210,
+        image: "",
+      },
+      {
+        id: 2,
+        date: new Date(Date.now() - 1000 * 60 * 60).toLocaleString(),
+        dateValue: Date.now() - 1000 * 60 * 60,
+        headline: "Film Room",
+        body: "A closer look at how the Bengals adjusted their protection schemes to neutralize the edge rush.",
+        author: "Analyst Corner",
+        verified: false,
+        likes: 860,
+        views: 30110,
+        image: "",
+      },
     ];
   }
 

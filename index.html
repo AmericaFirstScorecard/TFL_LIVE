@@ -22,6 +22,7 @@
         <a href="#win" class="nav__item nav__item--active" data-tab="win">Win Prob</a>
         <a href="#mvp" class="nav__item" data-tab="mvp">MVP Odds</a>
         <a href="#standings" class="nav__item" data-tab="standings">Standings</a>
+        <a href="#news" class="nav__item" data-tab="news">News</a>
       </nav>
       <div class="meta">Auto-refreshing every 30 seconds</div>
     </header>
@@ -37,8 +38,10 @@
 
           <div class="teams">
             <div class="team team--away">
-              <div class="team__possession team__possession--left" id="teamAPossession" aria-hidden="true">🏈</div>
-              <div class="team__logo" id="teamALogo"></div>
+              <div class="team__crest">
+                <div class="team__possession team__possession--left" id="teamAPossession" aria-hidden="true">🏈</div>
+                <div class="team__logo" id="teamALogo"></div>
+              </div>
               <div class="team__name" id="teamAName">Team A</div>
               <div class="team__record" id="teamARecord">&nbsp;</div>
             </div>
@@ -48,6 +51,7 @@
                   <span class="score__delta" id="teamAScoreDelta"></span>
                   <span class="score__value" id="teamAScore">0</span>
                 </div>
+                <span class="score__winner" id="winnerArrow" aria-hidden="true"></span>
                 <span class="score__divider">—</span>
                 <div class="score__team">
                   <span class="score__delta" id="teamBScoreDelta"></span>
@@ -65,8 +69,10 @@
               </div>
             </div>
             <div class="team team--home">
-              <div class="team__possession team__possession--right" id="teamBPossession" aria-hidden="true">🏈</div>
-              <div class="team__logo" id="teamBLogo"></div>
+              <div class="team__crest">
+                <div class="team__possession team__possession--right" id="teamBPossession" aria-hidden="true">🏈</div>
+                <div class="team__logo" id="teamBLogo"></div>
+              </div>
               <div class="team__name" id="teamBName">Team B</div>
               <div class="team__record" id="teamBRecord">&nbsp;</div>
             </div>
@@ -104,6 +110,13 @@
 
           <div class="state state--loading" id="winLoading">Loading matchup feed…</div>
           <div class="state state--error" id="winError" hidden>Unable to load matchup feed. Retrying…</div>
+          <div class="breakdown">
+            <div class="breakdown__header">
+              <div class="chart-card__title">Team breakdown</div>
+              <div class="chart-card__subtitle">Key team stats (live)</div>
+            </div>
+            <div class="breakdown__grid" id="breakdownGrid"></div>
+          </div>
         </div>
       </section>
 
@@ -165,6 +178,19 @@
             <div class="state state--loading" id="standingsLoading">Loading standings…</div>
             <div class="state state--error" id="standingsError" hidden>Unable to load standings.</div>
           </div>
+        </div>
+      </section>
+
+      <section id="tab-news" class="tab" aria-labelledby="News view">
+        <div class="panel">
+          <div class="panel__header">
+            <div class="chart-card__title">League News</div>
+            <div class="badge badge--ghost" id="newsStatus">Freshest headlines from the sheet</div>
+          </div>
+          <div class="news-feed" id="newsFeed"></div>
+          <div class="state state--loading" id="newsLoading">Loading news…</div>
+          <div class="state state--error" id="newsError" hidden>Unable to load news.</div>
+          <div class="state state--empty" id="newsEmpty" hidden>No headlines found.</div>
         </div>
       </section>
     </main>
