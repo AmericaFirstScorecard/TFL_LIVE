@@ -181,11 +181,17 @@
   /**********************
    * UI BOOTSTRAP
    **********************/
-  const app = document.getElementById("app");
+  const app = document.getElementById("app") || document.body;
   app.style.minHeight = "100vh";
   app.style.display = "grid";
   app.style.placeItems = "center";
   app.style.padding = "24px";
+
+  // Hide setup hint once a real sheet URL is provided
+  const hint = document.querySelector(".hint");
+  if (hint && SHEET_CSV_URL && !SHEET_CSV_URL.includes("PASTE_YOUR_PUBLISHED_CSV_URL_HERE")) {
+    hint.style.display = "none";
+  }
 
   const wrap = document.createElement("div");
   wrap.style.width = "min(96vw, 1800px)";
@@ -889,10 +895,10 @@
     const pillY = scoreY + sizes.gapScoreToTime;
     setFont(sizes.timePx, 800);
     const tw = textW(timeStr);
-    const padX = Math.floor(26 * scale);
-    const padY = Math.floor(13 * scale);
-    const pillW = tw + 2 * padX;
-    const pillH = sizes.timePx + 2 * padY;
+    const pillPadX = Math.floor(26 * scale);
+    const pillPadY = Math.floor(13 * scale);
+    const pillW = tw + 2 * pillPadX;
+    const pillH = sizes.timePx + 2 * pillPadY;
     const pillX = headerCx - pillW / 2;
     const pillR = pillH / 2;
 
@@ -906,7 +912,7 @@
 
     ctx.fillStyle = rgbaStr(THEME.TEXT);
     // baseline text y alignment
-    ctx.fillText(timeStr, pillX + padX, pillY);
+    ctx.fillText(timeStr, pillX + pillPadX, pillY);
 
     // Strip under pill
     if (strip) {
