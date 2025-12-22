@@ -33,7 +33,7 @@
     lou: "lou",
     cards: "lou",
     cardinals: "lou",
-    "arizona cardinals": "lou",
+    "louisville cardinals": "lou",
     cin: "cin",
     bengals: "cin",
     "cincinnati bengals": "cin",
