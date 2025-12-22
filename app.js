@@ -125,12 +125,23 @@
     console.info("[TFL] MATCHUP_CSV_URL =", MATCHUP_CSV_URL);
     console.info("[TFL] MVP_CSV_URL =", MVP_CSV_URL);
 
-    fetchMatchup();
-    fetchMvp();
-
-    setInterval(fetchMatchup, POLL_MS);
-    setInterval(fetchMvp, POLL_MS);
+    startPolling();
   });
+
+  function startPolling() {
+    const refresh = () => {
+      fetchMatchup();
+      fetchMvp();
+    };
+
+    refresh();
+    setInterval(refresh, POLL_MS);
+
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refresh();
+    });
+  }
 
   function cacheEls() {
     const id = (x) => document.getElementById(x);
@@ -190,6 +201,11 @@
     els.newsError = id("newsError");
     els.newsEmpty = id("newsEmpty");
     els.newsStatus = id("newsStatus");
+
+    els.bracketDiagram = id("bracketDiagram");
+    els.bracketStatus = id("bracketStatus");
+    els.bracketLoading = id("bracketLoading");
+    els.bracketError = id("bracketError");
   }
 
   function initTabs() {
@@ -199,6 +215,7 @@
       mvp: document.getElementById("tab-mvp"),
       standings: document.getElementById("tab-standings"),
       news: document.getElementById("tab-news"),
+      bracket: document.getElementById("tab-bracket"),
     };
 
     function setTab(tab) {
@@ -364,6 +381,7 @@
       cache: "no-store",
       redirect: "follow",
       mode: "cors",
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
     });
 
     if (!res.ok) {
@@ -385,7 +403,12 @@
   async function fetchArrayBuffer(url) {
     const u = new URL(url, window.location.href);
     u.searchParams.set("_cb", Date.now().toString());
-    const res = await fetch(u.toString(), { method: "GET", cache: "no-store", redirect: "follow" });
+    const res = await fetch(u.toString(), {
+      method: "GET",
+      cache: "no-store",
+      redirect: "follow",
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} for ${u.toString()}`);
     return res.arrayBuffer();
   }
@@ -426,6 +449,8 @@
     toggleError(els.standingsError, false);
     setLoading(els.newsLoading, true);
     toggleError(els.newsError, false);
+    setLoading(els.bracketLoading, true);
+    toggleError(els.bracketError, false);
 
     const url = overrideUrl("mvp") || MVP_CSV_URL;
 
@@ -437,12 +462,14 @@
       state.standingsLookup = buildStandingsLookup(standings);
       renderMvp(mvpRecords);
       renderStandings(standings);
+      renderBracket(standings);
       state.newsRecords = news;
       renderNews(news);
       if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
       setLoading(els.mvpLoading, false);
       setLoading(els.standingsLoading, false);
       setLoading(els.newsLoading, false);
+      setLoading(els.bracketLoading, false);
     } catch (err) {
       console.error("[mvp]", err);
       showError(els.mvpError, `MVP feed error: ${err.message}`);
@@ -451,13 +478,16 @@
       state.standingsLookup = buildStandingsLookup(state.lastStandings);
       renderMvp(state.lastMvpRecords);
       renderStandings(state.lastStandings);
+      renderBracket(state.lastStandings);
       state.newsRecords = buildSampleNews();
       renderNews(state.newsRecords);
       if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
       setLoading(els.mvpLoading, false);
       setLoading(els.standingsLoading, false);
       setLoading(els.newsLoading, false);
+      setLoading(els.bracketLoading, false);
       showError(els.newsError, `News feed error: ${err.message}`);
+      showError(els.bracketError, `Bracket error: ${err.message}`);
     }
   }
 
@@ -818,9 +848,16 @@
   }
 
   function parseNewsSheet(workbook) {
-    const sheetName = workbook.SheetNames.find((n) => n.toLowerCase().includes("news"));
-    if (!sheetName) return [];
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+    const sheetNames = workbook.SheetNames || [];
+    const lastSheetName = sheetNames[sheetNames.length - 1];
+    const lastSheetIsNews = lastSheetName && looksLikeNewsSheet(workbook.Sheets[lastSheetName]);
+    const preferredSheet =
+      (lastSheetIsNews && lastSheetName) ||
+      sheetNames.find((n) => n.toLowerCase().includes("news")) ||
+      lastSheetName;
+
+    if (!preferredSheet) return [];
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[preferredSheet], { defval: "" });
     return rows
       .map((row, idx) => {
         const rawDate = row.Date || row.date || row.DATE || row.Timestamp || row.timestamp;
@@ -832,7 +869,7 @@
           headline: String(row.Headline || row.headline || "").trim(),
           body: String(row.News || row.news || row.Story || "").trim(),
           author: String(row.Author || row.author || "").trim(),
-          verified: String(row["Verified Writer"] || row.verified || "").toLowerCase() === "true",
+          verified: ["true", "yes"].includes(String(row["Verified Writer"] || row.verified || "").toLowerCase()),
           likes: parseNumber(row.Likes),
           views: parseNumber(row.Views || row["Views..."]),
           image: String(row["image route (if applicable)"] || row.image || row.photo || "").trim(),
@@ -988,7 +1025,8 @@
     if (els.clutchValue) els.clutchValue.textContent = metrics.clutch;
 
     renderPills(metrics, pregameBaseline, liveBaseline);
-    renderBreakdown(latest.teamStats, teamAInfo, teamBInfo);
+    const derivedStats = deriveMatchupStats(snapshots, teamAInfo, teamBInfo);
+    renderBreakdown(derivedStats, teamAInfo, teamBInfo);
 
     toggleError(els.winError, false);
     setLoading(els.winLoading, false);
@@ -1149,6 +1187,96 @@
     if (els.standingsStatus) els.standingsStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
   }
 
+  function renderBracket(rows) {
+    if (!els.bracketDiagram) return;
+    els.bracketDiagram.innerHTML = "";
+
+    if (!rows || !rows.length) {
+      toggleError(els.bracketError, true);
+      return;
+    }
+
+    const seeds = buildSeeds(rows);
+    const [seed1, seed2, seed3, seed4, seed5] = seeds;
+
+    const bracketGrid = document.createElement("div");
+    bracketGrid.className = "bracket__grid";
+
+    const wildcard = document.createElement("div");
+    wildcard.className = "bracket__round";
+    wildcard.innerHTML = `<div class="bracket__round-title">Wildcard</div>`;
+    wildcard.appendChild(buildMatchupCard(seed4, seed3, "Winner to Semi"));
+
+    const semi = document.createElement("div");
+    semi.className = "bracket__round";
+    semi.innerHTML = `<div class="bracket__round-title">Semifinal</div>`;
+    semi.appendChild(buildMatchupCard(seed2, null, "Faces Wildcard Winner", seed3 && seed4 ? "Wildcard Winner" : "Awaiting wildcard"));
+
+    const final = document.createElement("div");
+    final.className = "bracket__round bracket__round--final";
+    final.innerHTML = `<div class="bracket__round-title">Tate Bowl</div>`;
+    final.appendChild(buildMatchupCard(seed1, null, "Plays winner of semifinal", seed2 ? "Semifinal Winner" : "Awaiting semi"));
+
+    const eliminated = document.createElement("div");
+    eliminated.className = "bracket__eliminated";
+    eliminated.textContent = seed5 ? `Seed ${seed5.seed} (${resolveTeam(seed5.team).displayName}) is eliminated` : "Waiting on updated seeds…";
+
+    bracketGrid.appendChild(wildcard);
+    bracketGrid.appendChild(semi);
+    bracketGrid.appendChild(final);
+    els.bracketDiagram.appendChild(bracketGrid);
+    els.bracketDiagram.appendChild(eliminated);
+
+    if (els.bracketStatus) els.bracketStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    toggleError(els.bracketError, false);
+  }
+
+  function buildMatchupCard(teamA, teamB, note, placeholder) {
+    const card = document.createElement("div");
+    card.className = "bracket__matchup";
+
+    card.appendChild(seedChip(teamA, placeholder || "Seed pending"));
+    if (teamB || placeholder) {
+      const connector = document.createElement("div");
+      connector.className = "bracket__connector";
+      connector.textContent = "vs";
+      card.appendChild(connector);
+      card.appendChild(seedChip(teamB, placeholder || "Winner advances"));
+    }
+
+    if (note) {
+      const meta = document.createElement("div");
+      meta.className = "bracket__note";
+      meta.textContent = note;
+      card.appendChild(meta);
+    }
+
+    return card;
+  }
+
+  function seedChip(seed, fallbackLabel) {
+    const chip = document.createElement("div");
+    chip.className = "seed-chip";
+    const logo = document.createElement("div");
+    logo.className = "seed-chip__logo";
+    if (seed) setLogo(logo, resolveTeam(seed.team).logoKey);
+    chip.appendChild(logo);
+
+    const meta = document.createElement("div");
+    meta.className = "seed-chip__meta";
+    const name = document.createElement("div");
+    name.className = "seed-chip__name";
+    name.textContent = seed ? resolveTeam(seed.team).displayName : fallbackLabel;
+    const seedTag = document.createElement("div");
+    seedTag.className = "seed-chip__seed";
+    seedTag.textContent = seed ? `Seed ${seed.seed}` : "Awaiting seed";
+    meta.appendChild(name);
+    meta.appendChild(seedTag);
+
+    chip.appendChild(meta);
+    return chip;
+  }
+
   function renderNews(news) {
     if (!els.newsFeed) return;
     els.newsFeed.innerHTML = "";
@@ -1159,7 +1287,7 @@
     if (els.newsEmpty) els.newsEmpty.hidden = true;
     toggleError(els.newsError, false);
 
-    const sorted = [...news].sort((a, b) => (a.dateValue ?? 0) - (b.dateValue ?? 0));
+    const sorted = [...news].sort((a, b) => (b.dateValue ?? 0) - (a.dateValue ?? 0));
     const frag = document.createDocumentFragment();
 
     sorted.forEach((item) => {
@@ -1233,6 +1361,92 @@
     const clutch = computeClutch(filtered, snapshots);
 
     return { momentum, bigSwing, clutch };
+  }
+
+  function deriveMatchupStats(snapshots, teamAInfo, teamBInfo) {
+    if (!snapshots?.length) return null;
+    const ordered = [...snapshots].sort((a, b) => (b.minuteLeft ?? 0) - (a.minuteLeft ?? 0));
+
+    let leadChanges = 0;
+    let prevLeader = null;
+    let currentRunA = 0;
+    let currentRunB = 0;
+    let longestRunA = 0;
+    let longestRunB = 0;
+    let timeLeadingA = 0;
+    let timeLeadingB = 0;
+    let timeTied = 0;
+    let probSamples = 0;
+    let probAwayTotal = 0;
+    let probHomeTotal = 0;
+    let possessionsA = 0;
+    let possessionsB = 0;
+
+    const scoreA = (snap) => (snap?.scoreA != null ? Number(snap.scoreA) : 0);
+    const scoreB = (snap) => (snap?.scoreB != null ? Number(snap.scoreB) : 0);
+
+    const teamAKey = canonicalTeamKey(teamAInfo?.canonicalKey || teamAInfo?.displayName);
+    const teamBKey = canonicalTeamKey(teamBInfo?.canonicalKey || teamBInfo?.displayName);
+
+    for (let i = 0; i < ordered.length; i++) {
+      const snap = ordered[i];
+      const prev = ordered[i - 1];
+      const currScoreA = scoreA(snap);
+      const currScoreB = scoreB(snap);
+      const prevScoreA = scoreA(prev ?? snap);
+      const prevScoreB = scoreB(prev ?? snap);
+
+      const leader = currScoreA > currScoreB ? "a" : currScoreB > currScoreA ? "b" : "tied";
+      if (prevLeader && leader !== prevLeader && leader !== "tied" && prevLeader !== "tied") {
+        leadChanges += 1;
+      }
+      prevLeader = leader !== "tied" ? leader : prevLeader;
+
+      const deltaA = currScoreA - prevScoreA;
+      const deltaB = currScoreB - prevScoreB;
+      currentRunA = deltaA > 0 ? currentRunA + deltaA : 0;
+      currentRunB = deltaB > 0 ? currentRunB + deltaB : 0;
+      longestRunA = Math.max(longestRunA, currentRunA);
+      longestRunB = Math.max(longestRunB, currentRunB);
+
+      if (snap.possession) {
+        const possKey = canonicalTeamKey(snap.possession) || normalizeTeamKey(snap.possession);
+        if (teamAKey && possKey === teamAKey) possessionsA += 1;
+        if (teamBKey && possKey === teamBKey) possessionsB += 1;
+      }
+
+      if (snap.winProbAway != null && snap.winProbHome != null) {
+        probSamples += 1;
+        probAwayTotal += snap.winProbAway * 100;
+        probHomeTotal += snap.winProbHome * 100;
+      }
+
+      const next = ordered[i + 1];
+      if (next && snap.minuteLeft != null && next.minuteLeft != null) {
+        const elapsed = Math.abs((snap.minuteLeft ?? 0) - (next.minuteLeft ?? 0));
+        if (leader === "a") timeLeadingA += elapsed;
+        else if (leader === "b") timeLeadingB += elapsed;
+        else timeTied += elapsed;
+      }
+    }
+
+    const finalSnap = ordered[ordered.length - 1];
+
+    return {
+      scoreA: scoreA(finalSnap),
+      scoreB: scoreB(finalSnap),
+      pointDiff: scoreA(finalSnap) - scoreB(finalSnap),
+      leadChanges,
+      longestRunA,
+      longestRunB,
+      timeLeadingA,
+      timeLeadingB,
+      timeTied,
+      avgWinProbA: probSamples ? probAwayTotal / probSamples : null,
+      avgWinProbB: probSamples ? probHomeTotal / probSamples : null,
+      possessionsA,
+      possessionsB,
+    };
   }
 
   function computeBigSwing(series) {
@@ -1310,32 +1524,98 @@
     }
 
     const cards = [
-      { label: "Total yards", a: formatCount(stats.totalYardsA), b: formatCount(stats.totalYardsB) },
-      { label: "First downs", a: formatCount(stats.firstDownsA), b: formatCount(stats.firstDownsB) },
-      { label: "3rd down", a: formatConversionDisplay(stats.thirdConvA, stats.thirdMadeA, stats.thirdAttA), b: formatConversionDisplay(stats.thirdConvB, stats.thirdMadeB, stats.thirdAttB) },
-      { label: "4th down", a: formatConversionDisplay(stats.fourthConvA, stats.fourthMadeA, stats.fourthAttA), b: formatConversionDisplay(stats.fourthConvB, stats.fourthMadeB, stats.fourthAttB) },
-      { label: "Turnovers", a: formatCount(stats.turnoversA), b: formatCount(stats.turnoversB) },
-      { label: "Penalties", a: formatCount(stats.penaltiesA), b: formatCount(stats.penaltiesB) },
-      { label: "Yards/play", a: formatScore(stats.yardsPerPlayA), b: formatScore(stats.yardsPerPlayB) },
-      { label: "Red zone", a: stats.redZoneA || "—", b: stats.redZoneB || "—" },
-      { label: "TOP (min)", a: formatPossessionClock(stats.topA), b: formatPossessionClock(stats.topB) },
+      {
+        label: "Score",
+        a: formatCount(stats.scoreA),
+        b: formatCount(stats.scoreB),
+      },
+      {
+        label: "Avg win prob",
+        a: stats.avgWinProbA != null ? `${stats.avgWinProbA.toFixed(1)}%` : "—",
+        b: stats.avgWinProbB != null ? `${stats.avgWinProbB.toFixed(1)}%` : "—",
+      },
+      {
+        label: "Longest scoring run",
+        a: stats.longestRunA ? `+${stats.longestRunA}` : "—",
+        b: stats.longestRunB ? `+${stats.longestRunB}` : "—",
+      },
+      {
+        label: "Time leading",
+        a: stats.timeLeadingA ? formatClock(stats.timeLeadingA) : "—",
+        b: stats.timeLeadingB ? formatClock(stats.timeLeadingB) : "—",
+        note: stats.timeTied ? `Tied for ${formatClock(stats.timeTied)}` : "",
+      },
+      {
+        label: "Logged possessions",
+        a: formatCount(stats.possessionsA),
+        b: formatCount(stats.possessionsB),
+      },
+    ];
+
+    const metaCards = [
+      { label: "Lead changes", value: formatCount(stats.leadChanges) },
+      { label: "Current margin", value: formatSigned(stats.pointDiff) },
     ];
 
     const frag = document.createDocumentFragment();
+
+    const teamBadge = (team) => {
+      const badge = document.createElement("div");
+      badge.className = "team-stat__logo";
+      setLogo(badge, team.logoKey);
+      return badge;
+    };
+
+    const statChip = (team, value, tone) => {
+      const chip = document.createElement("div");
+      chip.className = `team-stat ${tone ? `team-stat--${tone}` : ""}`.trim();
+      chip.appendChild(teamBadge(team));
+      const val = document.createElement("div");
+      val.className = "team-stat__value";
+      val.textContent = value ?? "—";
+      chip.appendChild(val);
+      return chip;
+    };
+
     cards.forEach((card) => {
       const div = document.createElement("div");
       div.className = "breakdown-card";
-      div.innerHTML = `
-        <div class="breakdown-card__heading">
-          <span>${escapeHtml(card.label)}</span>
-          <span class="breakdown-card__stat">${escapeHtml(teamAInfo.displayName)}</span>
-          <span class="breakdown-card__stat">${escapeHtml(teamBInfo.displayName)}</span>
-        </div>
-        <div class="breakdown-card__stat">${escapeHtml(teamAInfo.displayName)}: ${escapeHtml(String(card.a ?? "—"))}</div>
-        <div class="breakdown-card__stat">${escapeHtml(teamBInfo.displayName)}: ${escapeHtml(String(card.b ?? "—"))}</div>
-      `;
+      const heading = document.createElement("div");
+      heading.className = "breakdown-card__heading";
+      heading.textContent = card.label;
+
+      const values = document.createElement("div");
+      values.className = "breakdown-card__values";
+      values.appendChild(statChip(teamAInfo, card.a, "left"));
+      values.appendChild(statChip(teamBInfo, card.b, "right"));
+
+      div.appendChild(heading);
+      div.appendChild(values);
+
+      if (card.note) {
+        const note = document.createElement("div");
+        note.className = "breakdown-card__note";
+        note.textContent = card.note;
+        div.appendChild(note);
+      }
+
       frag.appendChild(div);
     });
+
+    metaCards.forEach((meta) => {
+      const div = document.createElement("div");
+      div.className = "breakdown-card breakdown-card--meta";
+      const heading = document.createElement("div");
+      heading.className = "breakdown-card__heading";
+      heading.textContent = meta.label;
+      const value = document.createElement("div");
+      value.className = "breakdown-card__meta-value";
+      value.textContent = meta.value ?? "—";
+      div.appendChild(heading);
+      div.appendChild(value);
+      frag.appendChild(div);
+    });
+
     els.breakdownGrid.appendChild(frag);
   }
 
@@ -1370,6 +1650,16 @@
     const date = new Date(raw);
     if (!Number.isNaN(date)) return { value: date.getTime(), formatted: date.toLocaleString() };
     return { value: null, formatted: String(raw) };
+  }
+
+  function looksLikeNewsSheet(sheet) {
+    if (!sheet || typeof XLSX === "undefined") return false;
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false });
+    const header = rows?.[0] || [];
+    const normalized = header.map((h) => String(h || "").toLowerCase());
+    const hasHeadline = normalized.some((h) => h.includes("headline") || h.includes("news"));
+    const hasDate = normalized.some((h) => h.includes("date") || h.includes("timestamp"));
+    return hasHeadline && hasDate;
   }
 
   function buildLogoMap() {
@@ -1532,6 +1822,12 @@
     return Number(value).toLocaleString();
   }
 
+  function formatSigned(value) {
+    if (value == null || Number.isNaN(value)) return "—";
+    const rounded = Number.isInteger(value) ? value : Number(value).toFixed(1);
+    return value > 0 ? `+${rounded}` : String(rounded);
+  }
+
   function formatRecord(row) {
     if (!row) return "Record —";
     const w = row.wins ?? "—";
@@ -1586,6 +1882,15 @@
       map.set(key, row);
     });
     return map;
+  }
+
+  function buildSeeds(rows) {
+    if (!rows?.length) return [];
+    return [...rows]
+      .filter((row) => row.team)
+      .sort((a, b) => (b.points ?? 0) - (a.points ?? 0) || (b.winPct ?? 0) - (a.winPct ?? 0) || (b.wins ?? 0) - (a.wins ?? 0))
+      .slice(0, 5)
+      .map((row, idx) => ({ ...row, seed: idx + 1 }));
   }
 
   function lookupStanding(map, raw) {
