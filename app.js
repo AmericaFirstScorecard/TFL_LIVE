@@ -2011,9 +2011,16 @@
     if (next.updateIndex > prev.updateIndex) return true;
     if (next.updateIndex < prev.updateIndex) return false;
 
+    const scoreAdvanced =
+      Number.isFinite(next.scoreSum) && Number.isFinite(prev.scoreSum) && next.scoreSum > prev.scoreSum;
+
     if (Number.isFinite(next.minuteLeft) && Number.isFinite(prev.minuteLeft)) {
       if (next.minuteLeft < prev.minuteLeft) return true;
-      if (next.minuteLeft > prev.minuteLeft) return false;
+      if (next.minuteLeft > prev.minuteLeft) {
+        // Some sheets use elapsed minutes instead of minutes remaining; if the score advanced, treat as fresh.
+        if (scoreAdvanced) return true;
+        return false;
+      }
     }
 
     if (Number.isFinite(next.scoreSum) && Number.isFinite(prev.scoreSum)) {
