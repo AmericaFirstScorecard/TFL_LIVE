@@ -218,11 +218,11 @@ body {
 }
 
 .team__possession--left {
-  left: -18px;
+  left: 6px;
 }
 
 .team__possession--right {
-  right: -18px;
+  right: 6px;
 }
 
 .team--has-ball .team__possession {
@@ -243,9 +243,26 @@ body {
 }
 
 .score__line {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
   font-size: 42px;
   font-weight: 800;
   letter-spacing: 1px;
+}
+
+.score__team {
+  position: relative;
+  min-width: 68px;
+  text-align: center;
+}
+
+.score__value {
+  display: inline-block;
+}
+
+.score__value--bump {
+  animation: scoreRise 0.65s ease;
 }
 
 .score__divider {
@@ -261,6 +278,24 @@ body {
   justify-content: center;
   color: var(--muted);
   font-size: 13px;
+}
+
+.score__delta {
+  position: absolute;
+  top: -10px;
+  right: -12px;
+  font-size: 14px;
+  color: var(--success);
+  font-weight: 700;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+
+.score__delta--show {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .chart-card {
@@ -427,6 +462,27 @@ body {
   color: var(--muted);
 }
 
+.standings-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.standings-team__logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.08), transparent 60%);
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
+  border: 1px solid var(--border);
+}
+
+.standings-team__name {
+  font-weight: 700;
+}
+
 .expand-btn {
   padding: 8px 12px;
   background: rgba(96, 165, 250, 0.12);
@@ -451,6 +507,20 @@ body {
 
 .tab--active {
   display: block;
+}
+
+@keyframes scoreRise {
+  0% {
+    transform: translateY(10px);
+    opacity: 0.6;
+  }
+  60% {
+    transform: translateY(-4px);
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @media (max-width: 900px) {
