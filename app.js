@@ -5,7 +5,7 @@
   // 1) Publish your Google Sheet tab to the web as CSV.
   // Use the gviz CSV endpoint (works well with CORS):
   // https://docs.google.com/spreadsheets/d/<ID>/gviz/tq?tqx=out:csv&sheet=<TAB_NAME>
-  const SHEET_CSV_URL = "PASTE_YOUR_PUBLISHED_CSV_URL_HERE";
+  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv";
 
   // Canvas output size (matches your Python output)
   const FINAL_W = 1800;
