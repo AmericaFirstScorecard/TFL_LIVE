@@ -23,6 +23,7 @@
         <a href="#mvp" class="nav__item" data-tab="mvp">MVP Odds</a>
         <a href="#standings" class="nav__item" data-tab="standings">Standings</a>
         <a href="#news" class="nav__item" data-tab="news">News</a>
+        <a href="#bracket" class="nav__item" data-tab="bracket">Tate Bowl Bracket</a>
       </nav>
       <div class="meta">Auto-refreshing every 30 seconds</div>
     </header>
@@ -191,6 +192,21 @@
           <div class="state state--loading" id="newsLoading">Loading news…</div>
           <div class="state state--error" id="newsError" hidden>Unable to load news.</div>
           <div class="state state--empty" id="newsEmpty" hidden>No headlines found.</div>
+        </div>
+      </section>
+
+      <section id="tab-bracket" class="tab" aria-labelledby="Tate Bowl Bracket view">
+        <div class="panel">
+          <div class="panel__header">
+            <div>
+              <div class="chart-card__title">Tate Bowl Bracket</div>
+              <div class="chart-card__subtitle">Seeds update live from the standings sheet</div>
+            </div>
+            <div class="badge badge--ghost" id="bracketStatus">Loading…</div>
+          </div>
+          <div class="bracket" id="bracketDiagram"></div>
+          <div class="state state--loading" id="bracketLoading">Building bracket…</div>
+          <div class="state state--error" id="bracketError" hidden>Unable to build bracket.</div>
         </div>
       </section>
     </main>
