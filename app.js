@@ -5,7 +5,7 @@
   // 1) Publish your Google Sheet tab to the web as CSV.
   // Use the gviz CSV endpoint (works well with CORS):
   // https://docs.google.com/spreadsheets/d/<ID>/gviz/tq?tqx=out:csv&sheet=<TAB_NAME>
-  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv";
+  const DEFAULT_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv";
 
   // Canvas output size (matches your Python output)
   const FINAL_W = 1800;
@@ -23,12 +23,19 @@
   const SMOOTH_WIN = 13; // odd
   const SHOW_PREGAME_BASELINE = true;
 
-  // Optional query param: ?refresh=10 (seconds)
+  // Optional query param overrides:
+  //   ?refresh=10 (seconds)
+  //   ?sheet=<CSV_URL> (Google Sheet published as CSV)
+  const urlParams = new URL(location.href).searchParams;
   const REFRESH_SEC = (() => {
-    const u = new URL(location.href);
-    const v = Number(u.searchParams.get("refresh"));
+    const v = Number(urlParams.get("refresh"));
     if (Number.isFinite(v) && v >= 0) return v;
     return 30; // default: refresh every 30s
+  })();
+  const SHEET_CSV_URL = (() => {
+    const override = urlParams.get("sheet");
+    if (override && override.startsWith("http")) return override;
+    return DEFAULT_SHEET_CSV_URL;
   })();
 
   /**********************
@@ -215,6 +222,20 @@
   canvas.style.borderRadius = "18px";
   canvas.style.boxShadow = "0 30px 80px rgba(0,0,0,0.45)";
   wrap.appendChild(canvas);
+
+  const pngPreview = document.createElement("img");
+  pngPreview.alt = "Latest sheet render (PNG)";
+  pngPreview.style.display = "block";
+  pngPreview.style.width = "100%";
+  pngPreview.style.height = "auto";
+  pngPreview.style.borderRadius = "12px";
+  pngPreview.style.border = "1px solid rgba(255,255,255,0.12)";
+  pngPreview.style.boxShadow = "0 10px 30px rgba(0,0,0,0.28)";
+  pngPreview.style.marginTop = "8px";
+  pngPreview.style.background = "rgba(255,255,255,0.02)";
+  pngPreview.style.objectFit = "contain";
+  pngPreview.loading = "lazy";
+  wrap.appendChild(pngPreview);
 
   const ctx = canvas.getContext("2d");
 
@@ -685,17 +706,17 @@
     fillRoundedRect(ctx, x0, y0, W, headerH, radius, gHeader);
 
     // Layout columns
-    const padX = 60;
+    const layoutPadX = 60;
     const leftW = Math.floor(W * 0.40);
     const rightW = Math.floor(W * 0.40);
     const centerW = W - leftW - rightW;
 
-    const L0 = x0 + padX;
+    const L0 = x0 + layoutPadX;
     const L1 = L0 + leftW;
     const C0 = L1;
     const C1 = C0 + centerW;
     const R0 = C1;
-    const R1 = x1 - padX;
+    const R1 = x1 - layoutPadX;
 
     const awayTeam = TEAM[awayKey];
     const homeTeam = TEAM[homeKey];
@@ -1297,9 +1318,11 @@
       statusLine.textContent =
         `Away=${awayKey} | Home=${homeKey} | snapshots=${snaps.length}` +
         (REFRESH_SEC ? ` | auto-refresh=${REFRESH_SEC}s` : "") +
-        ` | last=${reason}`;
+        ` | last=${reason}` +
+        (SHEET_CSV_URL ? " | sheet set" : " | sheet missing");
 
       await renderCard({ awayKey, homeKey, snaps, pregame });
+      pngPreview.src = canvas.toDataURL("image/png");
     } catch (e) {
       console.error(e);
       statusLine.textContent = `Error: ${e.message}`;
