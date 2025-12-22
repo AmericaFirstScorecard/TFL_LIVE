@@ -97,6 +97,7 @@
     playersByTeam: new Map(),
     standingsLookup: new Map(),
     lastMatchup: null,
+    lastMatchupFreshness: null,
     lastIsFinal: null,
     hasShownConfetti: false,
     matchupVersion: 0,
@@ -168,7 +169,6 @@
     els.teamBScore = id("teamBScore");
     els.teamAScoreDelta = id("teamAScoreDelta");
     els.teamBScoreDelta = id("teamBScoreDelta");
-    els.winnerArrow = id("winnerArrow");
 
     els.tickerQuarter = id("tickerQuarter");
     els.tickerClock = id("tickerClock");
@@ -472,7 +472,15 @@
       const parsed = parseMatchupCSV(text);
       if (!parsed.snapshots.length) throw new Error("No matchup rows parsed");
       if (requestId < state.matchupVersion) return;
+      const latestSnapshot = parsed.snapshots[parsed.snapshots.length - 1];
+      const nextFreshness = buildSnapshotFreshness(latestSnapshot, parsed.snapshots.length);
       state.matchupVersion = requestId;
+      if (state.lastMatchupFreshness && nextFreshness && !isFreshSnapshot(nextFreshness, state.lastMatchupFreshness)) {
+        console.warn("[matchup] Ignoring stale sheet data");
+        setLoading(els.winLoading, false);
+        return;
+      }
+      state.lastMatchupFreshness = nextFreshness || state.lastMatchupFreshness;
       state.lastMatchup = parsed;
       renderMatchup(parsed);
       setLoading(els.winLoading, false);
@@ -1949,6 +1957,38 @@
   // =======================
   // HELPERS
   // =======================
+  function buildSnapshotFreshness(snapshot, fallbackUpdateIndex = 0) {
+    if (!snapshot) return null;
+    const updateIndex = parseNumber(snapshot.update) ?? fallbackUpdateIndex;
+    const minuteLeft = snapshot.minuteLeft != null ? Number(snapshot.minuteLeft) : null;
+    const scoreA = snapshot.scoreA != null ? Number(snapshot.scoreA) : null;
+    const scoreB = snapshot.scoreB != null ? Number(snapshot.scoreB) : null;
+    const scoreSum =
+      scoreA != null && scoreB != null && Number.isFinite(scoreA) && Number.isFinite(scoreB)
+        ? scoreA + scoreB
+        : null;
+    return { updateIndex, minuteLeft, scoreSum };
+  }
+
+  function isFreshSnapshot(next, prev) {
+    if (!next) return true;
+    if (!prev) return true;
+    if (next.updateIndex > prev.updateIndex) return true;
+    if (next.updateIndex < prev.updateIndex) return false;
+
+    if (Number.isFinite(next.minuteLeft) && Number.isFinite(prev.minuteLeft)) {
+      if (next.minuteLeft < prev.minuteLeft) return true;
+      if (next.minuteLeft > prev.minuteLeft) return false;
+    }
+
+    if (Number.isFinite(next.scoreSum) && Number.isFinite(prev.scoreSum)) {
+      if (next.scoreSum > prev.scoreSum) return true;
+      if (next.scoreSum < prev.scoreSum) return false;
+    }
+
+    return true;
+  }
+
   function computeLiveBaseline(series) {
     const cleaned = series.filter((v) => v != null && !Number.isNaN(v));
     if (!cleaned.length) return null;
@@ -2445,26 +2485,14 @@
     const bContainer = els.teamBLogo?.closest(".team");
     aContainer?.classList.remove("team--winner", "team--loser");
     bContainer?.classList.remove("team--winner", "team--loser");
-    if (els.winnerArrow) {
-      els.winnerArrow.textContent = "";
-      els.winnerArrow.style.opacity = "0";
-    }
     if (!winner) return;
 
     if (winner === "A") {
       aContainer?.classList.add("team--winner");
       bContainer?.classList.add("team--loser");
-      if (els.winnerArrow) {
-        els.winnerArrow.textContent = "⬅";
-        els.winnerArrow.style.opacity = "1";
-      }
     } else if (winner === "B") {
       bContainer?.classList.add("team--winner");
       aContainer?.classList.add("team--loser");
-      if (els.winnerArrow) {
-        els.winnerArrow.textContent = "➡";
-        els.winnerArrow.style.opacity = "1";
-      }
     }
   }
 
