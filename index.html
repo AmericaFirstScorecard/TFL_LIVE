@@ -52,8 +52,10 @@
                   <span class="score__delta" id="teamAScoreDelta"></span>
                   <span class="score__value" id="teamAScore">0</span>
                 </div>
-                <span class="score__winner" id="winnerArrow" aria-hidden="true"></span>
-                <span class="score__divider">—</span>
+                <div class="score__center">
+                  <span class="score__winner" id="winnerArrow" aria-hidden="true"></span>
+                  <span class="score__divider">—</span>
+                </div>
                 <div class="score__team">
                   <span class="score__delta" id="teamBScoreDelta"></span>
                   <span class="score__value" id="teamBScore">0</span>
@@ -85,7 +87,6 @@
                 <div class="chart-card__title">Win probability</div>
                 <div class="chart-card__subtitle" id="lastUpdate">Awaiting data…</div>
               </div>
-              <div class="chip" id="teamListChip">Teams: —</div>
             </div>
             <canvas id="winProbChart" height="220"></canvas>
           </div>
@@ -107,6 +108,15 @@
               <div class="insight__label">Baseline</div>
               <div class="insight__value" id="baselineValue">—</div>
             </div>
+          </div>
+
+          <div class="live-stats">
+            <div class="live-stats__header">
+              <div class="chart-card__title">Live stats</div>
+              <div class="chart-card__subtitle">Latest team totals pulled from the feed</div>
+            </div>
+            <div class="live-stats__grid" id="liveStatsGrid"></div>
+            <div class="state state--empty" id="liveStatsEmpty" hidden>Live stats will appear once provided.</div>
           </div>
 
           <div class="state state--loading" id="winLoading">Loading matchup feed…</div>
@@ -229,6 +239,14 @@
             <div class="detail__player-detail" id="playerDetail"></div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="overlay" id="playerOverlay" hidden>
+      <div class="overlay__backdrop"></div>
+      <div class="overlay__content" role="dialog" aria-modal="true" aria-labelledby="playerOverlayTitle">
+        <button class="overlay__close" id="playerOverlayClose" aria-label="Close player details">×</button>
+        <div id="playerOverlayContent"></div>
       </div>
     </div>
   </div>
