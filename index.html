@@ -4,11 +4,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Live TFL win probability, MVP odds, standings, and bracket in one place." />
   <title>TFL Live Win Probability + MVP Odds</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/svg+xml" href="logos/tfl-logo.svg">
+  <link rel="apple-touch-icon" href="logos/tfl-logo.svg">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="TFL Live Monitor">
+  <meta property="og:title" content="TFL Live Win Probability + MVP Odds">
+  <meta property="og:description" content="Live TFL win probability, MVP odds, standings, and bracket in one place.">
+  <meta property="og:image" content="https://quickchart.io/chart?width=1200&height=630&backgroundColor=%23051021&format=png&c=%7B%22type%22%3A%22bar%22%2C%22data%22%3A%7B%22labels%22%3A%5B%22Away%20Hawks%22%2C%22Home%20Knights%22%5D%2C%22datasets%22%3A%5B%7B%22label%22%3A%22Score%22%2C%22data%22%3A%5B24%2C27%5D%2C%22backgroundColor%22%3A%5B%22%23d21d2a%22%2C%22%231f3b73%22%5D%2C%22borderRadius%22%3A12%7D%5D%7D%2C%22options%22%3A%7B%22responsive%22%3Atrue%2C%22plugins%22%3A%7B%22title%22%3A%7B%22display%22%3Atrue%2C%22text%22%3A%22TFL%20Live%20Scorecard%22%2C%22color%22%3A%22%23f5f7fc%22%2C%22font%22%3A%7B%22size%22%3A34%7D%7D%2C%22legend%22%3A%7B%22display%22%3Afalse%7D%7D%2C%22scales%22%3A%7B%22x%22%3A%7B%22display%22%3Afalse%7D%2C%22y%22%3A%7B%22ticks%22%3A%7B%22color%22%3A%22%23f5f7fc%22%7D%2C%22grid%22%3A%7B%22display%22%3Afalse%7D%7D%7D%2C%22layout%22%3A%7B%22padding%22%3A%7B%22top%22%3A40%2C%22bottom%22%3A40%2C%22left%22%3A60%2C%22right%22%3A60%7D%7D%7D%7D">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="TFL live scorecard preview">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:url" content="https://www.tatefblive.com/">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="TFL Live Win Probability + MVP Odds">
+  <meta name="twitter:description" content="Live TFL win probability, MVP odds, standings, and bracket.">
+  <meta name="twitter:image" content="https://quickchart.io/chart?width=1200&height=630&backgroundColor=%23051021&format=png&c=%7B%22type%22%3A%22bar%22%2C%22data%22%3A%7B%22labels%22%3A%5B%22Away%20Hawks%22%2C%22Home%20Knights%22%5D%2C%22datasets%22%3A%5B%7B%22label%22%3A%22Score%22%2C%22data%22%3A%5B24%2C27%5D%2C%22backgroundColor%22%3A%5B%22%23d21d2a%22%2C%22%231f3b73%22%5D%2C%22borderRadius%22%3A12%7D%5D%7D%2C%22options%22%3A%7B%22responsive%22%3Atrue%2C%22plugins%22%3A%7B%22title%22%3A%7B%22display%22%3Atrue%2C%22text%22%3A%22TFL%20Live%20Scorecard%22%2C%22color%22%3A%22%23f5f7fc%22%2C%22font%22%3A%7B%22size%22%3A34%7D%7D%2C%22legend%22%3A%7B%22display%22%3Afalse%7D%7D%2C%22scales%22%3A%7B%22x%22%3A%7B%22display%22%3Afalse%7D%2C%22y%22%3A%7B%22ticks%22%3A%7B%22color%22%3A%22%23f5f7fc%22%7D%2C%22grid%22%3A%7B%22display%22%3Afalse%7D%7D%7D%2C%22layout%22%3A%7B%22padding%22%3A%7B%22top%22%3A40%2C%22bottom%22%3A40%2C%22left%22%3A60%2C%22right%22%3A60%7D%7D%7D%7D">
+  <meta name="twitter:image:alt" content="TFL live scorecard preview">
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
