@@ -1,261 +1,378 @@
-/* app.js
-   ============================================================
-   FANTASY LEAGUE WIN PROBABILITY CARD (Browser / GitHub Pages)
-   - Pulls LIVE data from a *published Google Sheet CSV endpoint*
-   - Renders the full “card” graphic in an HTML5 canvas
-   - Works on GitHub Pages (no backend)
-   - Supports 5 teams: Cowboys, Bengals, Giants, 49ers, Cardinals
-   - Logos expected in: /logos/
-       cowboys.png, bengals.png, giants.png, Sanfran.png, Cards.png
-
-   REQUIRED (1-time):
-   1) Publish your Google Sheet to the web as CSV (File → Share → Publish to web → CSV)
-   2) Set SHEET_CSV_URL below to your published URL:
-        https://docs.google.com/spreadsheets/d/<ID>/gviz/tq?tqx=out:csv&sheet=<TABNAME>
-
-   OPTIONAL URL params:
-     ?away=giants&home=bengals
-     ?sheet=Week3            (if you want to switch the sheet tab name in your URL builder)
-     ?refresh=10             (seconds)
-   ============================================================
-*/
-
 (() => {
-  // ============================================================
-  // CONFIG YOU EDIT
-  // ============================================================
-
-  // Paste your published CSV endpoint here:
-  // Example:
-  // const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/XXXX/gviz/tq?tqx=out:csv&sheet=Week3";
+  /**********************
+   * CONFIG
+   **********************/
+  // 1) Publish your Google Sheet tab to the web as CSV.
+  // Use the gviz CSV endpoint (works well with CORS):
+  // https://docs.google.com/spreadsheets/d/<ID>/gviz/tq?tqx=out:csv&sheet=<TAB_NAME>
   const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv";
 
-  const DEFAULTS = {
-    leagueName: "Tate Football League",
-    weekLabel: "Week 3 • Regular Season Matchup",
-    awayTeam: "giants",
-    homeTeam: "bengals",
-    refreshSeconds: 15, // auto-refresh
-    canvasW: 1800,
-    canvasH: 1050,
-    supersample: 2, // for crisp output
-    showPregameBaseline: true,
-    momentumN: 5,
-    displayClampLo: 0.01,
-    displayClampHi: 0.99,
-  };
+  // Canvas output size (matches your Python output)
+  const FINAL_W = 1800;
+  const FINAL_H = 1050;
 
-  // Logos + colors
-  const TEAMS = {
-    cowboys: {
-      id: "cowboys",
-      display: "Dallas Cowboys",
-      // headers you might use in Google Sheets for score columns:
-      sheetKeys: ["Cowboys", "Dallas", "DAL", "Cowboys Score"],
-      logo: "logos/cowboys.png",
-      color: [0, 34, 68],
-    },
-    bengals: {
-      id: "bengals",
-      display: "Cincinnati Bengals",
-      sheetKeys: ["Bengals", "Cincinnati", "CIN", "Bengals Score"],
-      logo: "logos/bengals.png",
-      color: [251, 79, 20],
-    },
-    giants: {
-      id: "giants",
-      display: "New York Giants",
-      sheetKeys: ["Giants", "New York Giants", "NYG", "Giants Score"],
-      logo: "logos/giants.png",
-      color: [1, 35, 82],
-    },
-    niners: {
-      id: "niners",
-      display: "San Francisco 49ers",
-      sheetKeys: ["49ers", "Niners", "Sanfran", "San Fran", "SF", "San Francisco", "49ers Score"],
-      logo: "logos/Sanfran.png", // from your screenshot
-      color: [170, 0, 0],
-    },
-    cardinals: {
-      id: "cardinals",
-      display: "Arizona Cardinals",
-      sheetKeys: ["Cardinals", "Cards", "Arizona", "ARI", "Cardinals Score"],
-      logo: "logos/Cards.png", // from your screenshot
-      color: [151, 35, 63],
-    },
-  };
+  // Display clamp for win prob like your code
+  const DISPLAY_CLAMP_LO = 0.01;
+  const DISPLAY_CLAMP_HI = 0.99;
 
-  // ============================================================
-  // THEME (matches your Python vibe)
-  // ============================================================
+  // Momentum window
+  const MOMENTUM_N = 5;
+
+  // Smoothing
+  const POINTS_PER_SEGMENT = 40;
+  const SMOOTH_WIN = 13; // odd
+  const SHOW_PREGAME_BASELINE = true;
+
+  // Optional query param: ?refresh=10 (seconds)
+  const REFRESH_SEC = (() => {
+    const u = new URL(location.href);
+    const v = Number(u.searchParams.get("refresh"));
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  })();
+
+  /**********************
+   * THEME (dark premium)
+   **********************/
   const THEME = {
-    BG: [12, 16, 28],
-    CARD: [28, 37, 54],
-    CARD_LIGHT: [43, 55, 75],
-    TEXT: [245, 247, 252],
-    SUBTEXT: [199, 207, 220],
-    MUTED: [146, 158, 178],
-    GRID: [79, 95, 122],
-    AXIS: [112, 126, 152],
-    LIVE_BG: [239, 68, 68],
-    FINAL_BG: [107, 114, 128],
+    BG: rgb(12, 16, 28),
+    CARD: rgb(28, 37, 54),
+    CARD_LIGHT: rgb(43, 55, 75),
+
+    TEXT: rgb(245, 247, 252),
+    SUBTEXT: rgb(199, 207, 220),
+    MUTED: rgb(146, 158, 178),
+    GRID: rgb(79, 95, 122),
+    AXIS: rgb(112, 126, 152),
+
+    LIVE_BG: rgb(239, 68, 68),
+    FINAL_BG: rgb(107, 114, 128),
   };
 
-  // ============================================================
-  // UTIL
-  // ============================================================
-  const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
-  const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+  /**********************
+   * TEAM KEYS + LOGOS
+   * Keys MUST be: SanFran, Bengals, Cowboys, Giants, Louis
+   **********************/
+  const TEAM = {
+    SanFran: {
+      key: "SanFran",
+      display: "SanFran",
+      logo: "logos/Sanfran.png",
+      color: rgb(220, 38, 38),
+    },
+    Bengals: {
+      key: "Bengals",
+      display: "Bengals",
+      logo: "logos/bengals.png",
+      color: rgb(249, 115, 22),
+    },
+    Cowboys: {
+      key: "Cowboys",
+      display: "Cowboys",
+      logo: "logos/cowboys.png",
+      color: rgb(37, 99, 235),
+    },
+    Giants: {
+      key: "Giants",
+      display: "Giants",
+      logo: "logos/giants.png",
+      color: rgb(59, 130, 246),
+    },
+    Louis: {
+      key: "Louis",
+      display: "Louis",
+      logo: "logos/Cards.png",
+      color: rgb(190, 18, 60),
+    },
+  };
 
-  function rgb(a, alpha = 1) {
-    const [r, g, b] = a;
-    return `rgba(${r},${g},${b},${alpha})`;
+  // Accept common variants from your sheet and normalize to the required keys above.
+  const TEAM_ALIASES = new Map([
+    // SanFran
+    ["sanfran", "SanFran"],
+    ["san fran", "SanFran"],
+    ["sf", "SanFran"],
+    ["49ers", "SanFran"],
+    ["niners", "SanFran"],
+    ["sanfrancisco", "SanFran"],
+    ["san francisco", "SanFran"],
+
+    // Bengals
+    ["bengals", "Bengals"],
+    ["cin", "Bengals"],
+    ["cincinnati", "Bengals"],
+
+    // Cowboys
+    ["cowboys", "Cowboys"],
+    ["dal", "Cowboys"],
+    ["dallas", "Cowboys"],
+
+    // Giants
+    ["giants", "Giants"],
+    ["nyg", "Giants"],
+    ["new york giants", "Giants"],
+    ["newyorkgiants", "Giants"],
+
+    // Louis (Cardinals / Louis)
+    ["louis", "Louis"],
+    ["lou", "Louis"],
+    ["cardinals", "Louis"],
+    ["cards", "Louis"],
+    ["ari", "Louis"],
+    ["arizona", "Louis"],
+  ]);
+
+  function normalizeTeamKey(raw) {
+    if (!raw) return null;
+    const s = String(raw).trim();
+    if (!s) return null;
+    // Try exact key first
+    if (TEAM[s]) return s;
+    const low = s.toLowerCase().replace(/\s+/g, " ").trim();
+    const mapped = TEAM_ALIASES.get(low);
+    if (mapped && TEAM[mapped]) return mapped;
+
+    // Also try stripping spaces entirely
+    const tight = low.replace(/\s+/g, "");
+    const mapped2 = TEAM_ALIASES.get(tight);
+    if (mapped2 && TEAM[mapped2]) return mapped2;
+
+    return null;
   }
 
-  function parseQuery() {
-    const p = new URLSearchParams(location.search);
-    const away = (p.get("away") || DEFAULTS.awayTeam).toLowerCase();
-    const home = (p.get("home") || DEFAULTS.homeTeam).toLowerCase();
-    const refreshSeconds = clamp(parseFloat(p.get("refresh") || DEFAULTS.refreshSeconds), 3, 120);
-    return { away, home, refreshSeconds };
+  /**********************
+   * UI BOOTSTRAP
+   **********************/
+  const app = document.getElementById("app");
+  app.style.minHeight = "100vh";
+  app.style.display = "grid";
+  app.style.placeItems = "center";
+  app.style.padding = "24px";
+
+  const wrap = document.createElement("div");
+  wrap.style.width = "min(96vw, 1800px)";
+  wrap.style.display = "grid";
+  wrap.style.gap = "12px";
+  app.appendChild(wrap);
+
+  const statusLine = document.createElement("div");
+  statusLine.style.color = "rgba(245,247,252,0.85)";
+  statusLine.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
+  statusLine.style.fontSize = "14px";
+  statusLine.style.lineHeight = "1.4";
+  statusLine.textContent = "Loading…";
+  wrap.appendChild(statusLine);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = FINAL_W;
+  canvas.height = FINAL_H;
+  canvas.style.width = "100%";
+  canvas.style.height = "auto";
+  canvas.style.borderRadius = "18px";
+  canvas.style.boxShadow = "0 30px 80px rgba(0,0,0,0.45)";
+  wrap.appendChild(canvas);
+
+  const ctx = canvas.getContext("2d");
+
+  /**********************
+   * HELPERS
+   **********************/
+  function rgb(r, g, b, a = 1) {
+    return { r, g, b, a };
+  }
+  function rgbaStr(c) {
+    return `rgba(${c.r},${c.g},${c.b},${c.a})`;
+  }
+  function clamp(x, lo, hi) {
+    return Math.max(lo, Math.min(hi, x));
+  }
+  function isNum(x) {
+    return Number.isFinite(x);
+  }
+  function toNum(x) {
+    const n = Number(String(x).trim());
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  // Minutes Left: accept standard float or MM.SS style (18.40 => 18m40s)
+  function parseMinutesLeft(v) {
+    const n = toNum(v);
+    if (!Number.isFinite(n) || n < 0) return n;
+    const m = Math.floor(n);
+    const frac = n - m;
+    const ss = Math.round(frac * 100);
+    if (ss >= 0 && ss <= 59) {
+      return m + ss / 60;
+    }
+    return n;
+  }
+
+  function fmtClock(minutesFloat) {
+    let t = Math.max(0, minutesFloat);
+    let m = Math.floor(t);
+    let s = Math.round((t - m) * 60);
+    if (s === 60) {
+      m += 1;
+      s = 0;
+    }
+    return `${m}:${String(s).padStart(2, "0")}`;
   }
 
   function fmtPct(p) {
     return `${Math.round(p * 100)}%`;
   }
 
-  function fmtClock(minutesFloat) {
-    const m = Math.max(0, minutesFloat);
-    let mm = Math.floor(m);
-    let ss = Math.round((m - mm) * 60);
-    if (ss === 60) { mm += 1; ss = 0; }
-    return `${mm}:${String(ss).padStart(2, "0")}`;
-  }
-
-  function fmtDownOrdinal(d) {
-    if (!isNum(d)) return null;
+  function downOrdinal(d) {
+    if (!Number.isFinite(d)) return null;
     if (d === 1) return "1st";
     if (d === 2) return "2nd";
     if (d === 3) return "3rd";
     return `${d}th`;
   }
 
-  // Accepts minutes as float OR MM.SS exported weirdness (18.40 => 18m40s)
-  function parseMinutesLeft(v) {
-    if (!isNum(v)) return v;
-    if (v < 0) return v;
-    const m = Math.floor(v);
-    const frac = v - m;
-    const ss = Math.round(frac * 100);
-    if (ss >= 0 && ss <= 59) return m + ss / 60;
-    return v;
+  // Rounded rect path
+  function roundRectPath(c, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    c.beginPath();
+    c.moveTo(x + rr, y);
+    c.arcTo(x + w, y, x + w, y + h, rr);
+    c.arcTo(x + w, y + h, x, y + h, rr);
+    c.arcTo(x, y + h, x, y, rr);
+    c.arcTo(x, y, x + w, y, rr);
+    c.closePath();
   }
 
-  // Robust CSV parser (handles quoted commas/newlines)
+  function fillRoundedRect(c, x, y, w, h, r, fillStyle) {
+    c.save();
+    roundRectPath(c, x, y, w, h, r);
+    c.fillStyle = fillStyle;
+    c.fill();
+    c.restore();
+  }
+
+  function strokeRoundedRect(c, x, y, w, h, r, strokeStyle, lineWidth = 1) {
+    c.save();
+    roundRectPath(c, x, y, w, h, r);
+    c.strokeStyle = strokeStyle;
+    c.lineWidth = lineWidth;
+    c.stroke();
+    c.restore();
+  }
+
+  function dropShadowRoundedRect(c, x, y, w, h, r, shadowColor, blur, offX, offY) {
+    c.save();
+    c.shadowColor = shadowColor;
+    c.shadowBlur = blur;
+    c.shadowOffsetX = offX;
+    c.shadowOffsetY = offY;
+    fillRoundedRect(c, x, y, w, h, r, "rgba(0,0,0,0)"); // just to cast shadow
+    c.restore();
+  }
+
+  function linearGrad(c, x0, y0, x1, y1, stops) {
+    const g = c.createLinearGradient(x0, y0, x1, y1);
+    for (const [t, col] of stops) g.addColorStop(t, col);
+    return g;
+  }
+
+  /**********************
+   * CSV PARSER (handles quotes/commas)
+   **********************/
   function parseCSV(text) {
     const rows = [];
     let row = [];
-    let cell = "";
+    let cur = "";
     let inQuotes = false;
 
     for (let i = 0; i < text.length; i++) {
-      const c = text[i];
-      const n = text[i + 1];
+      const ch = text[i];
+      const next = text[i + 1];
 
-      if (inQuotes) {
-        if (c === '"' && n === '"') {
-          cell += '"';
-          i++;
-        } else if (c === '"') {
-          inQuotes = false;
-        } else {
-          cell += c;
-        }
-      } else {
-        if (c === '"') {
-          inQuotes = true;
-        } else if (c === ",") {
-          row.push(cell);
-          cell = "";
-        } else if (c === "\n") {
-          row.push(cell);
-          cell = "";
-          // ignore fully empty trailing lines
-          if (row.some((x) => String(x).trim() !== "")) rows.push(row);
-          row = [];
-        } else if (c === "\r") {
-          // ignore
-        } else {
-          cell += c;
-        }
+      if (ch === '"' && inQuotes && next === '"') {
+        cur += '"';
+        i++;
+        continue;
       }
+      if (ch === '"') {
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (ch === "," && !inQuotes) {
+        row.push(cur);
+        cur = "";
+        continue;
+      }
+      if ((ch === "\n" || ch === "\r") && !inQuotes) {
+        if (ch === "\r" && next === "\n") i++;
+        row.push(cur);
+        cur = "";
+        // ignore completely empty trailing lines
+        if (row.some(v => String(v).trim() !== "")) rows.push(row);
+        row = [];
+        continue;
+      }
+      cur += ch;
     }
-    row.push(cell);
-    if (row.some((x) => String(x).trim() !== "")) rows.push(row);
-    return rows;
+    row.push(cur);
+    if (row.some(v => String(v).trim() !== "")) rows.push(row);
+
+    if (!rows.length) return { headers: [], records: [] };
+
+    const headers = rows[0].map(h => String(h ?? "").trim());
+    const records = rows.slice(1).map(cols => {
+      const rec = {};
+      for (let i = 0; i < headers.length; i++) {
+        rec[headers[i]] = cols[i] ?? "";
+      }
+      return rec;
+    });
+
+    return { headers, records };
   }
 
-  function toFloat(x) {
-    if (x == null) return NaN;
-    const s = String(x).trim();
-    if (!s) return NaN;
-    const v = parseFloat(s);
-    return Number.isFinite(v) ? v : NaN;
+  function headerIndex(headers) {
+    const map = new Map();
+    headers.forEach(h => map.set(String(h).trim().toLowerCase(), h));
+    return map;
   }
 
-  function toInt(x) {
-    const v = toFloat(x);
-    return Number.isFinite(v) ? Math.round(v) : null;
-  }
-
-  function normHeader(h) {
-    return String(h || "").trim().toLowerCase();
-  }
-
-  function buildHeaderIndex(headers) {
-    const idx = new Map();
-    headers.forEach((h, i) => idx.set(normHeader(h), { original: h, i }));
-    return idx;
-  }
-
-  function findHeader(headersIdx, aliases) {
-    for (const a of aliases) {
-      const hit = headersIdx.get(normHeader(a));
-      if (hit) return hit;
+  function pickHeader(headersMap, candidates) {
+    for (const c of candidates) {
+      const key = String(c).trim().toLowerCase();
+      if (headersMap.has(key)) return headersMap.get(key);
     }
     return null;
   }
 
-  // ============================================================
-  // DATA MODEL + ANALYTICS (mirrors your Python)
-  // ============================================================
+  /**********************
+   * SNAPSHOT BUILD
+   **********************/
   function computeBigSwing(snaps) {
     let best = 0;
-    let bestUpdate = snaps[snaps.length - 1]?.update ?? 0;
+    let bestUpdate = snaps.length ? snaps[snaps.length - 1].update : 0;
     for (let i = 1; i < snaps.length; i++) {
-      const d = snaps[i].wpA - snaps[i - 1].wpA;
+      const d = snaps[i].wpAway - snaps[i - 1].wpAway;
       if (Math.abs(d) > Math.abs(best)) {
         best = d;
         bestUpdate = snaps[i].update;
       }
     }
-    return { best, bestUpdate };
+    return { swing: best, update: bestUpdate };
   }
 
   function computeMomentum(snaps, n) {
     if (snaps.length < 2) return 0;
-    n = Math.max(1, Math.min(n, snaps.length - 1));
-    return snaps[snaps.length - 1].wpA - snaps[snaps.length - 1 - n].wpA;
+    const k = Math.max(1, Math.min(n, snaps.length - 1));
+    return snaps[snaps.length - 1].wpAway - snaps[snaps.length - 1 - k].wpAway;
   }
 
   function computeClutchIndex(snaps) {
     if (snaps.length < 3) return 0;
-    const ys = snaps.map((s) => s.wpA);
+    const ys = snaps.map(s => s.wpAway);
     const diffs = [];
     for (let i = 1; i < ys.length; i++) diffs.push(ys[i] - ys[i - 1]);
     const mean = diffs.reduce((a, b) => a + b, 0) / diffs.length;
-    const varr = diffs.reduce((a, d) => a + (d - mean) * (d - mean), 0) / Math.max(1, diffs.length - 1);
-    const vol = Math.sqrt(varr);
+    const var_ = diffs.reduce((acc, d) => acc + (d - mean) * (d - mean), 0) / Math.max(1, diffs.length - 1);
+    const vol = Math.sqrt(var_);
     let crossings = 0;
     for (let i = 1; i < ys.length; i++) {
       if ((ys[i - 1] < 0.5 && ys[i] >= 0.5) || (ys[i - 1] >= 0.5 && ys[i] < 0.5)) crossings++;
@@ -264,16 +381,6 @@
     return Math.round(clamp(score, 0, 100));
   }
 
-  function findPregame(snaps) {
-    for (let i = snaps.length - 1; i >= 0; i--) {
-      if (isNum(snaps[i].pregameWp)) return clamp(snaps[i].pregameWp, 0, 1);
-    }
-    return null;
-  }
-
-  // ============================================================
-  // CHART SMOOTHING (edge-padded moving average)
-  // ============================================================
   function compressDuplicateX(x, y) {
     if (x.length <= 1) return { x, y };
     const outX = [x[0]];
@@ -287,25 +394,6 @@
       }
     }
     return { x: outX, y: outY };
-  }
-
-  function movingAverageEdgePadded(arr, winOdd) {
-    const win = winOdd;
-    if (arr.length < win) return arr.slice();
-    const pad = Math.floor(win / 2);
-    const padded = [];
-    for (let i = 0; i < pad; i++) padded.push(arr[0]);
-    for (let i = 0; i < arr.length; i++) padded.push(arr[i]);
-    for (let i = 0; i < pad; i++) padded.push(arr[arr.length - 1]);
-
-    const out = [];
-    const inv = 1 / win;
-    for (let i = 0; i < arr.length; i++) {
-      let s = 0;
-      for (let k = 0; k < win; k++) s += padded[i + k];
-      out.push(s * inv);
-    }
-    return out;
   }
 
   function smoothSeries(x, y, pointsPerSegment = 40) {
@@ -325,330 +413,233 @@
     xs.push(x[x.length - 1]);
     ys.push(y[y.length - 1]);
 
-    const win = 13; // odd
-    const smoothed = movingAverageEdgePadded(ys, win);
-    return { xs, ys: smoothed };
-  }
+    // Edge-padded moving average
+    const win = SMOOTH_WIN;
+    if (ys.length >= win) {
+      const pad = Math.floor(win / 2);
+      const padded = [];
+      for (let i = 0; i < pad; i++) padded.push(ys[0]);
+      padded.push(...ys);
+      for (let i = 0; i < pad; i++) padded.push(ys[ys.length - 1]);
 
-  // ============================================================
-  // CANVAS DRAWING HELPERS
-  // ============================================================
-  function roundRectPath(ctx, x, y, w, h, r) {
-    const rr = Math.min(r, w / 2, h / 2);
-    ctx.beginPath();
-    if (ctx.roundRect) {
-      ctx.roundRect(x, y, w, h, rr);
-    } else {
-      ctx.moveTo(x + rr, y);
-      ctx.arcTo(x + w, y, x + w, y + h, rr);
-      ctx.arcTo(x + w, y + h, x, y + h, rr);
-      ctx.arcTo(x, y + h, x, y, rr);
-      ctx.arcTo(x, y, x + w, y, rr);
-      ctx.closePath();
-    }
-  }
-
-  function drawGradientRect(ctx, x, y, w, h, c1, c2, alpha = 1, vertical = true, r = 0) {
-    ctx.save();
-    const grad = vertical ? ctx.createLinearGradient(0, y, 0, y + h) : ctx.createLinearGradient(x, 0, x + w, 0);
-    grad.addColorStop(0, rgb(c1, alpha));
-    grad.addColorStop(1, rgb(c2, alpha));
-
-    roundRectPath(ctx, x, y, w, h, r);
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function drawShadowedPanel(ctx, x, y, w, h, r, shadowY, shadowBlur) {
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.45)";
-    ctx.shadowBlur = shadowBlur;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = shadowY;
-    roundRectPath(ctx, x, y, w, h, r);
-    ctx.fillStyle = "rgba(0,0,0,0.001)";
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function drawText(ctx, text, x, y, font, fill, align = "left", baseline = "alphabetic") {
-    ctx.save();
-    ctx.font = font;
-    ctx.fillStyle = fill;
-    ctx.textAlign = align;
-    ctx.textBaseline = baseline;
-    ctx.fillText(text, x, y);
-    ctx.restore();
-  }
-
-  function footballIconCanvas(size) {
-    const c = document.createElement("canvas");
-    c.width = size;
-    c.height = size;
-    const ctx = c.getContext("2d");
-    const pad = Math.max(2, Math.floor(size / 10));
-    const x0 = pad, y0 = pad, x1 = size - pad, y1 = size - pad;
-
-    // ball
-    ctx.fillStyle = "rgba(139,69,19,1)";
-    ctx.beginPath();
-    ctx.ellipse(size / 2, size / 2, (x1 - x0) / 2, (y1 - y0) / 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // highlight
-    ctx.fillStyle = "rgba(180,120,60,0.35)";
-    const hl = Math.floor(size * 0.3);
-    ctx.beginPath();
-    ctx.ellipse(x0 + hl * 0.75, y0 + hl * 0.75, hl * 0.5, hl * 0.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // laces
-    const cx = size / 2, cy = size / 2;
-    const laceLen = size * 0.44;
-    ctx.strokeStyle = "rgba(255,255,255,1)";
-    ctx.lineWidth = Math.max(2, Math.floor(size / 12));
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(cx - laceLen / 2, cy);
-    ctx.lineTo(cx + laceLen / 2, cy);
-    ctx.stroke();
-
-    ctx.lineWidth = Math.max(2, Math.floor(size / 20));
-    for (let k = -2; k <= 2; k++) {
-      const lx = cx + (k * laceLen) / 6;
-      ctx.beginPath();
-      ctx.moveTo(lx, cy - size * 0.12);
-      ctx.lineTo(lx, cy + size * 0.12);
-      ctx.stroke();
+      const kernel = Array(win).fill(1 / win);
+      const out = [];
+      for (let i = 0; i < ys.length; i++) {
+        let s = 0;
+        for (let j = 0; j < win; j++) s += padded[i + j] * kernel[j];
+        out.push(s);
+      }
+      return { xs, ys: out };
     }
 
-    return c;
+    return { xs, ys };
   }
 
-  function pillMeasure(ctx, text, font, padX, padY) {
-    ctx.save();
-    ctx.font = font;
-    const w = ctx.measureText(text).width;
-    // approximate height from font size
-    const size = parseInt(font.match(/(\d+)px/)?.[1] || "16", 10);
-    const h = size * 1.25;
-    ctx.restore();
-    return { w: w + 2 * padX, h: h + 2 * padY, textW: w, textH: h };
-  }
-
-  function drawPill(ctx, x, y, w, h, r, bgFill, stroke, text, font, fg) {
-    ctx.save();
-    roundRectPath(ctx, x, y, w, h, r);
-    ctx.fillStyle = bgFill;
-    ctx.fill();
-    if (stroke) {
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = stroke;
-      ctx.stroke();
+  function getFirstNonEmpty(records, key) {
+    for (const r of records) {
+      const v = r[key];
+      if (v != null && String(v).trim() !== "") return v;
     }
-    ctx.font = font;
-    ctx.fillStyle = fg;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText(text, x + Math.floor((w - ctx.measureText(text).width) / 2), y + h / 2);
-    ctx.restore();
+    return null;
   }
 
-  // ============================================================
-  // CSV -> snapshots (dynamic Away/Home team columns)
-  // ============================================================
-  function buildCanonAliases(awayTeam, homeTeam) {
-    const awayKeys = TEAMS[awayTeam]?.sheetKeys ?? [awayTeam];
-    const homeKeys = TEAMS[homeTeam]?.sheetKeys ?? [homeTeam];
+  function buildSnapshots(headers, records) {
+    const hmap = headerIndex(headers);
 
-    return {
-      update: ["Update #", "Update", "Update#", "Snapshot", "Index"],
-      minutesLeft: ["Minutes Left", "Time Left", "Clock", "Min Left", "Time Remaining"],
-      minutesElapsed: ["Minutes Elapsed", "Elapsed", "Game Minutes Elapsed"],
+    // Required-ish canonical headers (with lots of aliases)
+    const H_UPDATE = pickHeader(hmap, ["Update #", "Update", "Update#", "Snapshot", "Index"]);
+    const H_MINLEFT = pickHeader(hmap, ["Minutes Left", "Time Left", "Clock", "Game Clock", "Minutes remaining", "Minutes Remaining"]);
+    const H_AWAYTEAM = pickHeader(hmap, ["Away", "Away Team", "AwayTeam", "Team A", "Team A Name"]);
+    const H_HOMETEAM = pickHeader(hmap, ["Home", "Home Team", "HomeTeam", "Team B", "Team B Name"]);
 
-      scoreAway: ["Team A", "Away", ...awayKeys, ...awayKeys.map(k => `${k} Score`), "Away Score"],
-      scoreHome: ["Team B", "Home", ...homeKeys, ...homeKeys.map(k => `${k} Score`), "Home Score"],
+    if (!H_MINLEFT) throw new Error("Missing 'Minutes Left' column (or alias).");
+    if (!H_AWAYTEAM || !H_HOMETEAM) throw new Error("Missing 'Away' and/or 'Home' columns.");
 
-      wpAway: [
-        "Team A Win Probability", "Team A Win Prob", "Win Probability", "Win Prob", "Win Prob A",
-        ...awayKeys.flatMap(k => [`${k} Win Probability`, `${k} Win Prob`, `${k} WP`]),
-      ],
+    // Determine teams from sheet (use last non-empty row info)
+    const awayRaw = getFirstNonEmpty(records.slice().reverse(), H_AWAYTEAM);
+    const homeRaw = getFirstNonEmpty(records.slice().reverse(), H_HOMETEAM);
+    const awayKey = normalizeTeamKey(awayRaw);
+    const homeKey = normalizeTeamKey(homeRaw);
 
-      hasBallAway: [
-        "Team A has Ball (1=yes, 0=no)", "Team A has Ball", "Has Ball", "Possession", "A has Ball",
-        ...awayKeys.flatMap(k => [`${k} has Ball (1=yes, 0=no)`, `${k} has Ball`, `${k} Possession`]),
-      ],
-
-      quarter: ["Quarter", "Q", "Period"],
-      down: ["Down", "Down#", "Down #"],
-      distance: ["Distance", "To Go", "Yards To Go", "YTG (To Go)"],
-      ytg: ["Yards to Goal", "YTG", "Yds to Goal", "YardsToGoal"],
-      pregameWp: ["Pregame Win Prob", "Pregame WP", "Pregame Probability", "Baseline Win Prob", "Pregame Win Probability"],
-    };
-  }
-
-  function rowsToObjects(csvRows) {
-    if (!csvRows || csvRows.length < 2) return [];
-    const headers = csvRows[0];
-    const out = [];
-    for (let r = 1; r < csvRows.length; r++) {
-      const row = csvRows[r];
-      const obj = {};
-      for (let i = 0; i < headers.length; i++) obj[headers[i]] = row[i] ?? "";
-      // stop at first fully blank row
-      if (Object.values(obj).every(v => String(v).trim() === "")) break;
-      out.push(obj);
-    }
-    return { headers, out };
-  }
-
-  function parseSnapshots(objs, headers, awayTeam, homeTeam) {
-    const idx = buildHeaderIndex(headers);
-    const A = buildCanonAliases(awayTeam, homeTeam);
-
-    const col = {
-      update: findHeader(idx, A.update),
-      minutesLeft: findHeader(idx, A.minutesLeft),
-      minutesElapsed: findHeader(idx, A.minutesElapsed),
-
-      scoreAway: findHeader(idx, A.scoreAway),
-      scoreHome: findHeader(idx, A.scoreHome),
-
-      wpAway: findHeader(idx, A.wpAway),
-      hasBallAway: findHeader(idx, A.hasBallAway),
-
-      quarter: findHeader(idx, A.quarter),
-      down: findHeader(idx, A.down),
-      distance: findHeader(idx, A.distance),
-      ytg: findHeader(idx, A.ytg),
-      pregameWp: findHeader(idx, A.pregameWp),
-    };
-
-    if (!col.minutesLeft || !col.wpAway) {
+    if (!awayKey || !homeKey) {
       throw new Error(
-        "Sheet is missing required columns. Need at least: Minutes Left + (Away Team) Win Probability.\n" +
-        "Also ensure your team score columns exist (e.g., 'Giants' and 'Bengals')."
+        `Away/Home team keys not recognized. Got Away='${awayRaw}', Home='${homeRaw}'. ` +
+        `Must map to: SanFran, Bengals, Cowboys, Giants, Louis.`
       );
     }
 
+    // Score columns: prefer team-named columns (Giants, Bengals, etc.), else generic
+    const awayScoreCol = TEAM[awayKey]?.key && hmap.get(TEAM[awayKey].key.toLowerCase()) ? TEAM[awayKey].key : null;
+    const homeScoreCol = TEAM[homeKey]?.key && hmap.get(TEAM[homeKey].key.toLowerCase()) ? TEAM[homeKey].key : null;
+
+    const H_AWAY_SCORE = awayScoreCol || pickHeader(hmap, ["Away Score", "Score Away", "Team A", "Team A Score"]);
+    const H_HOME_SCORE = homeScoreCol || pickHeader(hmap, ["Home Score", "Score Home", "Team B", "Team B Score"]);
+
+    // Win probability: prefer "<Away> Win Probability", else generic
+    const H_WP_AWAY =
+      pickHeader(hmap, [`${awayKey} Win Probability`, `${awayKey} Win Prob`, `${awayKey} Win Probability `]) ||
+      pickHeader(hmap, ["Away Win Probability", "Away Win Prob", "Team A Win Probability", "Team A Win Prob", "Win Probability", "Win Prob"]);
+
+    // Possession: prefer "<Away> has Ball", else generic
+    const H_HASBALL =
+      pickHeader(hmap, [`${awayKey} has Ball (1=yes, 0=no)`, `${awayKey} has Ball`, `${awayKey} Possession`]) ||
+      pickHeader(hmap, ["Away has Ball (1=yes, 0=no)", "Away has Ball", "Team A has Ball (1=yes, 0=no)", "Has Ball", "Possession"]);
+
+    const H_QUARTER = pickHeader(hmap, ["Quarter", "Q", "Period"]);
+    const H_DOWN = pickHeader(hmap, ["Down", "Down#", "Down #"]);
+    const H_DIST = pickHeader(hmap, ["Distance", "Dist", "To Go", "Yards To Go"]);
+    const H_YTG = pickHeader(hmap, ["Yards to Goal", "Yards To Goal", "YTG", "Yds to Goal"]);
+    const H_PREGAME = pickHeader(hmap, ["Pregame Win Prob", "Pregame WP", "Pregame Probability", "Baseline Win Prob"]);
+
+    if (!H_WP_AWAY) throw new Error("Missing win probability column. Use 'Away Win Probability' or '<Away> Win Probability'.");
+    if (!H_AWAY_SCORE || !H_HOME_SCORE) throw new Error("Missing score columns. Use 'Away Score'/'Home Score' or team columns named SanFran/Bengals/Cowboys/Giants/Louis.");
+
+    // Parse rows -> raw, then compute minutes elapsed like your Python logic
     let autoUpdate = 1;
     const raw = [];
 
-    for (const o of objs) {
-      const upd = col.update ? toFloat(o[col.update.original]) : NaN;
-      const update = Number.isFinite(upd) ? Math.round(upd) : autoUpdate++;
-      const tLeft = parseMinutesLeft(toFloat(o[col.minutesLeft.original]));
-      const wpA = toFloat(o[col.wpAway.original]);
+    for (const r of records) {
+      const upd = H_UPDATE ? toNum(r[H_UPDATE]) : NaN;
+      const update = Number.isFinite(upd) ? Math.round(upd) : autoUpdate;
+      autoUpdate++;
 
-      if (!Number.isFinite(tLeft) || !Number.isFinite(wpA)) continue;
+      const tLeft = parseMinutesLeft(r[H_MINLEFT]);
+      const wpAway = toNum(r[H_WP_AWAY]);
+      if (!Number.isFinite(tLeft) || !Number.isFinite(wpAway)) continue;
 
-      const sA = col.scoreAway ? toFloat(o[col.scoreAway.original]) : NaN;
-      const sB = col.scoreHome ? toFloat(o[col.scoreHome.original]) : NaN;
+      const sAway = toNum(r[H_AWAY_SCORE]);
+      const sHome = toNum(r[H_HOME_SCORE]);
 
-      const hasBall = col.hasBallAway ? toInt(o[col.hasBallAway.original]) : null;
+      const hasBall = H_HASBALL ? Math.round(toNum(r[H_HASBALL])) : null;
+      const quarter = H_QUARTER ? Math.round(toNum(r[H_QUARTER])) : null;
+      const down = H_DOWN ? Math.round(toNum(r[H_DOWN])) : null;
+      const dist = H_DIST ? Math.round(toNum(r[H_DIST])) : null;
+      const ytg = H_YTG ? Math.round(toNum(r[H_YTG])) : null;
 
-      const q = col.quarter ? toInt(o[col.quarter.original]) : null;
-      const dn = col.down ? toInt(o[col.down.original]) : null;
-      const dist = col.distance ? toInt(o[col.distance.original]) : null;
-      const ytg = col.ytg ? toInt(o[col.ytg.original]) : null;
-
-      const pg = col.pregameWp ? toFloat(o[col.pregameWp.original]) : NaN;
-      const pregameWp = Number.isFinite(pg) ? clamp(pg, 0, 1) : null;
-
-      // minutes elapsed: use column if present; else compute from minutes left deltas
-      const me = col.minutesElapsed ? toFloat(o[col.minutesElapsed.original]) : NaN;
+      const pg = H_PREGAME ? toNum(r[H_PREGAME]) : NaN;
 
       raw.push({
         update,
         minutesLeft: tLeft,
-        minutesElapsed: Number.isFinite(me) ? me : null,
-        wpA: clamp(wpA, 0, 1),
-        scoreA: Number.isFinite(sA) ? sA : 0,
-        scoreB: Number.isFinite(sB) ? sB : 0,
-        hasBallA: (hasBall === 0 || hasBall === 1) ? hasBall : null,
-        quarter: q,
-        down: dn,
-        distance: dist,
-        ytg,
-        pregameWp,
+        wpAway: clamp(wpAway, 0, 1),
+        scoreAway: Number.isFinite(sAway) ? sAway : 0,
+        scoreHome: Number.isFinite(sHome) ? sHome : 0,
+        hasBallAway: hasBall === 0 || hasBall === 1 ? hasBall : null,
+        quarter: Number.isFinite(quarter) ? quarter : null,
+        down: Number.isFinite(down) ? down : null,
+        distance: Number.isFinite(dist) ? dist : null,
+        ytg: Number.isFinite(ytg) ? ytg : null,
+        pregame: Number.isFinite(pg) ? clamp(pg, 0, 1) : null,
       });
     }
 
-    if (!raw.length) throw new Error("No valid rows found. Check your sheet values.");
+    if (!raw.length) throw new Error("No valid snapshot rows found (check Minutes Left / WP columns).");
 
     raw.sort((a, b) => a.update - b.update);
 
-    // If minutesElapsed missing, compute like your Python
-    if (raw.some(r => r.minutesElapsed == null)) {
-      let elapsed = 0;
-      let prevLeft = raw[0].minutesLeft;
-      for (let i = 0; i < raw.length; i++) {
-        if (i === 0) {
-          elapsed = 0;
-          prevLeft = raw[i].minutesLeft;
+    let elapsed = 0;
+    let prevLeft = raw[0].minutesLeft;
+    const snaps = [];
+
+    for (let i = 0; i < raw.length; i++) {
+      const d = raw[i];
+      if (i === 0) {
+        elapsed = 0;
+        prevLeft = d.minutesLeft;
+      } else {
+        const step = prevLeft - d.minutesLeft;
+        if (step > 0) {
+          elapsed += step;
+          prevLeft = d.minutesLeft;
         } else {
-          const step = prevLeft - raw[i].minutesLeft;
-          if (step > 0) {
-            elapsed += step;
-            prevLeft = raw[i].minutesLeft;
-          } else {
-            prevLeft = Math.min(prevLeft, raw[i].minutesLeft);
-          }
+          prevLeft = Math.min(prevLeft, d.minutesLeft);
         }
-        raw[i].minutesElapsed = elapsed;
       }
+
+      snaps.push({
+        update: d.update,
+        minutesLeft: d.minutesLeft,
+        minutesElapsed: elapsed,
+        wpAway: d.wpAway,
+        scoreAway: d.scoreAway,
+        scoreHome: d.scoreHome,
+        hasBallAway: d.hasBallAway,
+        quarter: d.quarter,
+        down: d.down,
+        distance: d.distance,
+        ytg: d.ytg,
+        pregame: d.pregame,
+      });
     }
 
-    return raw;
+    // Get pregame from last non-null
+    let pregame = null;
+    for (let i = snaps.length - 1; i >= 0; i--) {
+      if (snaps[i].pregame != null) { pregame = snaps[i].pregame; break; }
+    }
+
+    return { awayKey, homeKey, snaps, pregame };
   }
 
-  // ============================================================
-  // RENDER CARD (Canvas)
-  // ============================================================
-  function renderCard(ctx, snaps, cfg, assets) {
-    const W = cfg.canvasW * cfg.supersample;
-    const H = cfg.canvasH * cfg.supersample;
-    ctx.clearRect(0, 0, W, H);
+  /**********************
+   * LOGO LOADER
+   **********************/
+  const imageCache = new Map();
+  function loadImage(src) {
+    if (imageCache.has(src)) return imageCache.get(src);
+    const p = new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+      img.src = src;
+    });
+    imageCache.set(src, p);
+    return p;
+  }
 
-    const S = cfg.supersample;
-
-    // background
-    ctx.fillStyle = rgb(THEME.BG, 1);
-    ctx.fillRect(0, 0, W, H);
-
-    const m = Math.round(40 * S);
-    const x0 = m, y0 = m, x1 = W - m, y1 = H - m;
-    const cardR = Math.round(40 * S);
-
-    // shadow + card gradient
-    drawShadowedPanel(ctx, x0, y0, x1 - x0, y1 - y0, cardR, Math.round(35 * S), Math.round(60 * S));
-    drawGradientRect(ctx, x0, y0, x1 - x0, y1 - y0, THEME.CARD, THEME.CARD_LIGHT, 1, true, cardR);
-
-    // border
-    ctx.save();
-    roundRectPath(ctx, x0, y0, x1 - x0, y1 - y0, cardR);
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
-    ctx.lineWidth = Math.max(2, Math.round(3 * S));
-    ctx.stroke();
-    ctx.restore();
-
-    // header
-    const headerH = Math.round(250 * S);
-    drawGradientRect(ctx, x0, y0, x1 - x0, headerH, [36, 46, 66], THEME.CARD, 1, true, cardR);
+  /**********************
+   * RENDER
+   **********************/
+  function renderCard({ awayKey, homeKey, snaps, pregame }) {
+    // clear bg
+    ctx.clearRect(0, 0, FINAL_W, FINAL_H);
+    ctx.fillStyle = rgbaStr(THEME.BG);
+    ctx.fillRect(0, 0, FINAL_W, FINAL_H);
 
     const last = snaps[snaps.length - 1];
-    const away = TEAMS[cfg.awayTeam];
-    const home = TEAMS[cfg.homeTeam];
 
-    const wpADisp = clamp(last.wpA, cfg.displayClampLo, cfg.displayClampHi);
-    const wpBDisp = 1 - wpADisp;
+    // Card outer box
+    const margin = 40;
+    const x0 = margin, y0 = margin;
+    const x1 = FINAL_W - margin, y1 = FINAL_H - margin;
+    const W = x1 - x0, H = y1 - y0;
+    const radius = 40;
 
-    const innerW = x1 - x0;
-    const padX = Math.round(60 * S);
-    const leftW = Math.round(innerW * 0.40);
-    const rightW = Math.round(innerW * 0.40);
-    const centerW = innerW - leftW - rightW;
+    // shadow
+    dropShadowRoundedRect(ctx, x0, y0, W, H, radius, "rgba(0,0,0,0.55)", 55, 0, 30);
+
+    // main gradient
+    const gCard = linearGrad(ctx, x0, y0, x0, y1, [
+      [0, `rgb(${THEME.CARD.r},${THEME.CARD.g},${THEME.CARD.b})`],
+      [1, `rgb(${THEME.CARD_LIGHT.r},${THEME.CARD_LIGHT.g},${THEME.CARD_LIGHT.b})`],
+    ]);
+    fillRoundedRect(ctx, x0, y0, W, H, radius, gCard);
+    strokeRoundedRect(ctx, x0, y0, W, H, radius, "rgba(255,255,255,0.18)", 3);
+
+    // header
+    const headerH = 250;
+    const gHeader = linearGrad(ctx, x0, y0, x0, y0 + headerH, [
+      [0, "rgb(36,46,66)"],
+      [1, "rgb(28,37,54)"],
+    ]);
+    fillRoundedRect(ctx, x0, y0, W, headerH, radius, gHeader);
+
+    // Layout columns
+    const padX = 60;
+    const leftW = Math.floor(W * 0.40);
+    const rightW = Math.floor(W * 0.40);
+    const centerW = W - leftW - rightW;
 
     const L0 = x0 + padX;
     const L1 = L0 + leftW;
@@ -657,733 +648,630 @@
     const R0 = C1;
     const R1 = x1 - padX;
 
-    // logos
-    const logoBox = Math.round(100 * S);
-    const logoY = y0 + Math.round(90 * S);
-    const logoLeftX = L0 + Math.round(10 * S);
-    const logoRightX = R1 - Math.round(10 * S) - logoBox;
+    const awayTeam = TEAM[awayKey];
+    const homeTeam = TEAM[homeKey];
 
-    if (assets.logoAway) {
-      ctx.save();
-      // subtle drop shadow
-      ctx.globalAlpha = 0.35;
-      ctx.drawImage(assets.logoAway, logoLeftX + 6, logoY + 12, logoBox, logoBox);
-      ctx.restore();
-      ctx.drawImage(assets.logoAway, logoLeftX, logoY, logoBox, logoBox);
+    // Probabilities (Away vs Home)
+    const wpAwayDisp = clamp(last.wpAway, DISPLAY_CLAMP_LO, DISPLAY_CLAMP_HI);
+    const wpHomeDisp = 1 - wpAwayDisp;
+
+    // Team blocks + logos
+    const logoBox = 100;
+    const logoY = y0 + 90;
+    const logoLeftX = L0 + 10;
+    const logoRightX = R1 - 10 - logoBox;
+
+    // names / prob text
+    const nameY = y0 + 92;
+    const probY = y0 + 150;
+
+    // Draw text helpers
+    function setFont(px, weight = 700) {
+      ctx.font = `${weight} ${px}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
     }
-    if (assets.logoHome) {
-      ctx.save();
-      ctx.globalAlpha = 0.35;
-      ctx.drawImage(assets.logoHome, logoRightX + 6, logoY + 12, logoBox, logoBox);
-      ctx.restore();
-      ctx.drawImage(assets.logoHome, logoRightX, logoY, logoBox, logoBox);
+    function textW(text) {
+      return ctx.measureText(text).width;
+    }
+    function drawCentered(text, cx, cy) {
+      const w = textW(text);
+      ctx.fillText(text, cx - w / 2, cy);
     }
 
-    // team name + win prob
-    const nameFont = `${Math.round(40 * S)}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-    const probFont = `600 ${Math.round(24 * S)}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+    // Left (Away)
+    setFont(40, 800);
+    ctx.fillStyle = rgbaStr(THEME.TEXT);
+    ctx.fillText(awayTeam.display, logoLeftX + logoBox + 22, nameY);
 
-    const leftTextX = logoLeftX + logoBox + Math.round(22 * S);
-    const rightTextEnd = logoRightX - Math.round(22 * S);
-    const nameY = y0 + Math.round(90 * S);
-    const probY = y0 + Math.round(148 * S);
+    setFont(24, 700);
+    ctx.fillStyle = rgbaStr({ ...awayTeam.color, a: 1 });
+    ctx.fillText(`Win Prob: ${fmtPct(wpAwayDisp)}`, logoLeftX + logoBox + 22, probY);
 
-    drawText(ctx, away.display, leftTextX, nameY, `700 ${Math.round(40 * S)}px system-ui, -apple-system, Segoe UI, Roboto, Arial`, rgb(THEME.TEXT, 1), "left", "top");
-    drawText(ctx, `Win Prob: ${fmtPct(wpADisp)}`, leftTextX, probY, probFont, rgb(away.color, 1), "left", "top");
+    // Right (Home) aligned to right
+    setFont(40, 800);
+    ctx.fillStyle = rgbaStr(THEME.TEXT);
+    const homeNameW = textW(homeTeam.display);
+    ctx.fillText(homeTeam.display, (logoRightX - 22) - homeNameW, nameY);
 
-    ctx.save();
-    ctx.font = `700 ${Math.round(40 * S)}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-    const wHomeName = ctx.measureText(home.display).width;
-    ctx.restore();
-    drawText(ctx, home.display, rightTextEnd, nameY, `700 ${Math.round(40 * S)}px system-ui, -apple-system, Segoe UI, Roboto, Arial`, rgb(THEME.TEXT, 1), "right", "top");
+    setFont(24, 700);
+    ctx.fillStyle = rgbaStr({ ...homeTeam.color, a: 1 });
+    const homeProbText = `Win Prob: ${fmtPct(wpHomeDisp)}`;
+    const homeProbW = textW(homeProbText);
+    ctx.fillText(homeProbText, (logoRightX - 22) - homeProbW, probY);
 
-    drawText(ctx, `Win Prob: ${fmtPct(wpBDisp)}`, rightTextEnd, probY, probFont, rgb(home.color, 1), "right", "top");
-
-    // possession icon near the team that has ball (away hasBall flag)
-    if (last.hasBallA === 0 || last.hasBallA === 1) {
-      const icon = assets.footballIcon;
-      const gap = Math.round(14 * S);
-      const iconSize = Math.round(30 * S);
-
+    // Possession icon (simple football)
+    function drawFootballIcon(x, y, size = 30) {
       ctx.save();
-      ctx.font = `700 ${Math.round(40 * S)}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-      const wAwayName = ctx.measureText(away.display).width;
-      ctx.restore();
+      ctx.translate(x, y);
+      // shadow
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.beginPath();
+      ctx.ellipse(size * 0.5 + 2, size * 0.5 + 3, size * 0.42, size * 0.38, 0, 0, Math.PI * 2);
+      ctx.fill();
 
-      if (icon) {
-        if (last.hasBallA === 1) {
-          ctx.drawImage(icon, leftTextX + wAwayName + gap, nameY + Math.round(10 * S), iconSize, iconSize);
-        } else {
-          // place near home name start
-          const homeNameStartX = rightTextEnd - wHomeName;
-          ctx.drawImage(icon, homeNameStartX - gap - iconSize, nameY + Math.round(10 * S), iconSize, iconSize);
-        }
+      ctx.fillStyle = "rgba(139,69,19,1)";
+      ctx.beginPath();
+      ctx.ellipse(size * 0.5, size * 0.5, size * 0.42, size * 0.38, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(255,255,255,0.95)";
+      ctx.lineWidth = Math.max(2, Math.floor(size / 12));
+      ctx.beginPath();
+      ctx.moveTo(size * 0.28, size * 0.5);
+      ctx.lineTo(size * 0.72, size * 0.5);
+      ctx.stroke();
+
+      ctx.lineWidth = Math.max(2, Math.floor(size / 20));
+      for (let k = -2; k <= 2; k++) {
+        const lx = size * 0.5 + (k * (size * 0.44)) / 6;
+        ctx.beginPath();
+        ctx.moveTo(lx, size * 0.5 - size * 0.12);
+        ctx.lineTo(lx, size * 0.5 + size * 0.12);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    if (last.hasBallAway === 0 || last.hasBallAway === 1) {
+      // If away has ball -> place near away name, else near home name
+      if (last.hasBallAway === 1) {
+        setFont(40, 800);
+        const w = textW(awayTeam.display);
+        drawFootballIcon(logoLeftX + logoBox + 22 + w + 14, y0 + 72, 30);
+      } else {
+        setFont(40, 800);
+        const homeStartX = (logoRightX - 22) - homeNameW;
+        drawFootballIcon(homeStartX - 14 - 30, y0 + 72, 30);
       }
     }
 
-    // ============================================================
-    // CENTER STACK (league/week/score/time/strip)
-    // ============================================================
+    // Center stack (league/week/score/time/strip) – use your same vibe
     const headerCx = Math.floor((x0 + x1) / 2);
-    const headerInnerTop = y0 + Math.round(18 * S);
-    const headerInnerBot = y0 + headerH - Math.round(18 * S);
-    const usableH = headerInnerBot - headerInnerTop;
+    const headerTop = y0 + 18;
+    const headerBot = y0 + headerH - 18;
+    const usableH = headerBot - headerTop;
 
-    const scoreA = String(Math.floor(last.scoreA));
-    const scoreB = String(Math.floor(last.scoreB));
+    const leagueName = "Tate Football League";
+    const weekLabel = "Regular Season Matchup";
+
+    const scoreAway = String(Math.trunc(last.scoreAway));
+    const scoreHome = String(Math.trunc(last.scoreHome));
     const dash = "—";
     const timeStr = `${fmtClock(last.minutesLeft)} REMAINING`;
 
     let strip = null;
-    if (isNum(last.quarter)) {
+    if (last.quarter != null) {
       const parts = [`Q${last.quarter}`];
-      const dn = fmtDownOrdinal(last.down);
-      if (dn && isNum(last.distance)) parts.push(`${dn} & ${last.distance}`);
-      if (isNum(last.ytg)) parts.push(`YTG ${last.ytg}`);
+      const dn = downOrdinal(last.down);
+      if (dn && last.distance != null) parts.push(`${dn} & ${last.distance}`);
+      if (last.ytg != null) parts.push(`YTG ${last.ytg}`);
       strip = parts.join(" • ");
     }
 
+    // auto-fit scale
     let scale = 1.0;
-    let stackH = 999999;
-    let fonts = null;
+    let stackH = 0;
+    let sizes = null;
 
-    for (let i = 0; i < 18; i++) {
-      const leaguePx = Math.max(10, Math.round(20 * S * scale));
-      const weekPx = Math.max(10, Math.round(17 * S * scale));
-      const scorePx = Math.max(10, Math.round(110 * S * scale));
-      const timePx = Math.max(10, Math.round(30 * S * scale));
-      const stripPx = Math.max(10, Math.round(20 * S * scale));
+    function measureStack(scale) {
+      const leaguePx = Math.max(10, Math.floor(20 * scale));
+      const weekPx = Math.max(10, Math.floor(17 * scale));
+      const scorePx = Math.max(10, Math.floor(110 * scale));
+      const timePx = Math.max(10, Math.floor(30 * scale));
+      const stripPx = Math.max(10, Math.floor(20 * scale));
 
-      const titleGap = Math.round(6 * S * scale);
-      const gapTitleToScore = Math.round(14 * S * scale);
-      const gapScoreToTime = Math.round(30 * S * scale);
-      const gapTimeToStrip = strip ? Math.round(12 * S * scale) : 0;
+      const titleGap = Math.floor(6 * scale);
+      const gapTitleToScore = Math.floor(14 * scale);
+      const gapScoreToTime = Math.floor(30 * scale);
+      const gapTimeToStrip = strip ? Math.floor(12 * scale) : 0;
 
-      const leagueFont = `700 ${leaguePx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-      const weekFont = `600 ${weekPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-      const scoreFont = `800 ${scorePx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-      const timeFont = `700 ${timePx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-      const stripFont = `600 ${stripPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+      // measure text heights by using px directly (approx)
+      const leagueH = leaguePx;
+      const weekH = weekPx;
+      const scoreH = scorePx;
+      const timeH = timePx;
+      const stripH = strip ? stripPx : 0;
 
-      ctx.save();
-      ctx.font = leagueFont;
-      const lnH = leaguePx * 1.1;
-      ctx.font = weekFont;
-      const wkH = weekPx * 1.1;
-      const leagueBlockH = lnH + titleGap + wkH;
+      const leagueBlockH = leagueH + titleGap + weekH;
+      let total = leagueBlockH + gapTitleToScore + scoreH + gapScoreToTime + (timeH + Math.floor(26 * scale));
+      if (strip) total += gapTimeToStrip + stripH;
 
-      ctx.font = scoreFont;
-      const scoreHh = scorePx * 1.05;
-
-      ctx.font = timeFont;
-      const timeHh = timePx * 1.1;
-
-      const pillH = timeHh + 2 * Math.round(13 * S * scale);
-
-      const stripH = strip ? stripPx * 1.1 : 0;
-
-      stackH = leagueBlockH + gapTitleToScore + scoreHh + gapScoreToTime + pillH + (strip ? gapTimeToStrip + stripH : 0);
-
-      ctx.restore();
-
-      if (stackH <= usableH * 0.92) {
-        fonts = { leagueFont, weekFont, scoreFont, timeFont, stripFont, titleGap, gapTitleToScore, gapScoreToTime, gapTimeToStrip, timePx, scale };
-        break;
-      }
-      scale *= 0.92;
-    }
-
-    if (!fonts) {
-      // fallback minimal
-      fonts = {
-        leagueFont: `700 ${Math.round(18 * S)}px system-ui`,
-        weekFont: `600 ${Math.round(15 * S)}px system-ui`,
-        scoreFont: `800 ${Math.round(90 * S)}px system-ui`,
-        timeFont: `700 ${Math.round(26 * S)}px system-ui`,
-        stripFont: `600 ${Math.round(18 * S)}px system-ui`,
-        titleGap: Math.round(6 * S * 0.85),
-        gapTitleToScore: Math.round(14 * S * 0.85),
-        gapScoreToTime: Math.round(30 * S * 0.85),
-        gapTimeToStrip: strip ? Math.round(12 * S * 0.85) : 0,
-        timePx: Math.round(26 * S),
-        scale: 0.85,
+      return {
+        leaguePx, weekPx, scorePx, timePx, stripPx,
+        titleGap, gapTitleToScore, gapScoreToTime, gapTimeToStrip,
+        stackH: total
       };
     }
 
-    const stackTop = headerInnerTop + Math.max(0, Math.floor((usableH - stackH) / 2));
+    for (let i = 0; i < 18; i++) {
+      const m = measureStack(scale);
+      stackH = m.stackH;
+      if (stackH <= usableH * 0.92) { sizes = m; break; }
+      scale *= 0.92;
+      sizes = m;
+    }
 
-    // league + week (centered)
-    drawText(ctx, cfg.leagueName, headerCx, stackTop, fonts.leagueFont, rgb(THEME.TEXT, 1), "center", "top");
-    const leaguePxApprox = parseInt(fonts.leagueFont.match(/(\d+)px/)?.[1] || "18", 10);
-    const weekY = stackTop + Math.round(leaguePxApprox * 1.1) + fonts.titleGap;
-    drawText(ctx, cfg.weekLabel, headerCx, weekY, fonts.weekFont, rgb(THEME.SUBTEXT, 1), "center", "top");
+    const stackTop = headerTop + Math.max(0, Math.floor((usableH - stackH) / 2));
 
-    // score line
-    const weekPxApprox = parseInt(fonts.weekFont.match(/(\d+)px/)?.[1] || "16", 10);
-    const scoreY = weekY + Math.round(weekPxApprox * 1.1) + fonts.gapTitleToScore;
+    // Draw center stack
+    // League
+    setFont(sizes.leaguePx, 700);
+    ctx.fillStyle = rgbaStr(THEME.TEXT);
+    drawCentered(leagueName, headerCx, stackTop + sizes.leaguePx);
 
-    // measure score total width
-    ctx.save();
-    ctx.font = fonts.scoreFont;
-    const wA = ctx.measureText(scoreA).width;
-    const wD = ctx.measureText(dash).width;
-    const wB = ctx.measureText(scoreB).width;
-    ctx.restore();
+    // Week
+    setFont(sizes.weekPx, 600);
+    ctx.fillStyle = rgbaStr(THEME.SUBTEXT);
+    drawCentered(weekLabel, headerCx, stackTop + sizes.leaguePx + sizes.titleGap + sizes.weekPx);
 
-    const gapSB = Math.round(26 * S * fonts.scale);
+    // Score line
+    const scoreY = stackTop + sizes.leaguePx + sizes.titleGap + sizes.weekPx + sizes.gapTitleToScore + sizes.scorePx;
+    setFont(sizes.scorePx, 800);
+    const gapSB = Math.floor(26 * scale);
+    const wA = textW(scoreAway);
+    const wD = textW(dash);
+    const wB = textW(scoreHome);
     const scoreTotalW = wA + gapSB + wD + gapSB + wB;
     let sx = headerCx - scoreTotalW / 2;
 
-    drawText(ctx, scoreA, sx, scoreY, fonts.scoreFont, rgb(THEME.TEXT, 1), "left", "top");
+    ctx.fillStyle = rgbaStr(THEME.TEXT);
+    ctx.fillText(scoreAway, sx, scoreY);
     sx += wA + gapSB;
-    drawText(ctx, dash, sx, scoreY, fonts.scoreFont, rgb(THEME.MUTED, 1), "left", "top");
+    ctx.fillStyle = rgbaStr(THEME.MUTED);
+    ctx.fillText(dash, sx, scoreY);
     sx += wD + gapSB;
-    drawText(ctx, scoreB, sx, scoreY, fonts.scoreFont, rgb(THEME.TEXT, 1), "left", "top");
+    ctx.fillStyle = rgbaStr(THEME.TEXT);
+    ctx.fillText(scoreHome, sx, scoreY);
 
-    const scorePxApprox = parseInt(fonts.scoreFont.match(/(\d+)px/)?.[1] || "90", 10);
-    const scoreHApprox = Math.round(scorePxApprox * 1.05);
-
-    // time pill
-    ctx.save();
-    ctx.font = fonts.timeFont;
-    const tw = ctx.measureText(timeStr).width;
-    ctx.restore();
-
-    const pillPadX = Math.round(26 * S * fonts.scale);
-    const pillPadY = Math.round(13 * S * fonts.scale);
-    const pillW = tw + 2 * pillPadX;
-    const pillH = Math.round((fonts.timePx * 1.1) + 2 * pillPadY);
-
+    // Time pill
+    const pillY = scoreY + sizes.gapScoreToTime;
+    setFont(sizes.timePx, 800);
+    const tw = textW(timeStr);
+    const padX = Math.floor(26 * scale);
+    const padY = Math.floor(13 * scale);
+    const pillW = tw + 2 * padX;
+    const pillH = sizes.timePx + 2 * padY;
     const pillX = headerCx - pillW / 2;
-    const pillY = scoreY + scoreHApprox + fonts.gapScoreToTime;
-    const pillR = Math.floor(pillH / 2);
+    const pillR = pillH / 2;
 
-    drawGradientRect(ctx, pillX, pillY, pillW, pillH, THEME.CARD_LIGHT, THEME.CARD, 1, true, pillR);
-    ctx.save();
-    roundRectPath(ctx, pillX, pillY, pillW, pillH, pillR);
-    ctx.strokeStyle = "rgba(255,255,255,0.35)";
-    ctx.lineWidth = Math.max(2, Math.round(3 * S));
-    ctx.stroke();
-    ctx.restore();
+    // pill gradient
+    const gp = linearGrad(ctx, pillX, pillY - pillH, pillX, pillY, [
+      [0, `rgb(${THEME.CARD_LIGHT.r},${THEME.CARD_LIGHT.g},${THEME.CARD_LIGHT.b})`],
+      [1, `rgb(${THEME.CARD.r},${THEME.CARD.g},${THEME.CARD.b})`],
+    ]);
+    fillRoundedRect(ctx, pillX, pillY - pillH + 8, pillW, pillH, pillR, gp);
+    strokeRoundedRect(ctx, pillX, pillY - pillH + 8, pillW, pillH, pillR, "rgba(255,255,255,0.35)", 3);
 
-    drawText(ctx, timeStr, headerCx, pillY + pillH / 2, fonts.timeFont, rgb(THEME.TEXT, 1), "center", "middle");
+    ctx.fillStyle = rgbaStr(THEME.TEXT);
+    // baseline text y alignment
+    ctx.fillText(timeStr, pillX + padX, pillY);
 
-    // strip
+    // Strip under pill
     if (strip) {
-      const stripY = pillY + pillH + fonts.gapTimeToStrip;
-      drawText(ctx, strip, headerCx, stripY, fonts.stripFont, rgb(THEME.MUTED, 1), "center", "top");
+      setFont(sizes.stripPx, 700);
+      ctx.fillStyle = rgbaStr(THEME.MUTED);
+      drawCentered(strip, headerCx, pillY + sizes.gapTimeToStrip + sizes.stripPx);
     }
 
-    // ============================================================
-    // CHART PANEL
-    // ============================================================
-    const panelPadX = Math.round(70 * S);
-    const panelTop = y0 + headerH + Math.round(32 * S);
-    const panelBottom = y1 - Math.round(145 * S);
-
+    // Chart panel
+    const panelPadX = 70;
+    const panelTop = y0 + headerH + 32;
+    const panelBottom = y1 - 145;
     const px0 = x0 + panelPadX;
     const px1 = x1 - panelPadX;
     const py0 = panelTop;
     const py1 = panelBottom;
-    const pr = Math.round(28 * S);
+    const pr = 28;
 
-    drawShadowedPanel(ctx, px0, py0, px1 - px0, py1 - py0, pr, Math.round(25 * S), Math.round(50 * S));
-    drawGradientRect(ctx, px0, py0, px1 - px0, py1 - py0, THEME.CARD_LIGHT, THEME.CARD, 1, true, pr);
+    dropShadowRoundedRect(ctx, px0, py0, px1 - px0, py1 - py0, pr, "rgba(0,0,0,0.45)", 45, 0, 20);
+    const gPanel = linearGrad(ctx, px0, py0, px0, py1, [
+      [0, `rgb(${THEME.CARD_LIGHT.r},${THEME.CARD_LIGHT.g},${THEME.CARD_LIGHT.b})`],
+      [1, `rgb(${THEME.CARD.r},${THEME.CARD.g},${THEME.CARD.b})`],
+    ]);
+    fillRoundedRect(ctx, px0, py0, px1 - px0, py1 - py0, pr, gPanel);
+    strokeRoundedRect(ctx, px0, py0, px1 - px0, py1 - py0, pr, "rgba(255,255,255,0.22)", 3);
+
+    const innerPad = 32;
+    const plotX0 = px0 + innerPad;
+    const plotY0 = py0 + innerPad;
+    const plotX1 = px1 - innerPad;
+    const plotY1 = py1 - innerPad;
+
+    // --- Plot data prep (x=minutesElapsed, y=wpAway)
+    const xRaw = snaps.map(s => s.minutesElapsed);
+    const yRaw = snaps.map(s => clamp(s.wpAway, 0, 1));
+
+    // Sort by x
+    const idx = xRaw.map((v, i) => [v, i]).sort((a, b) => a[0] - b[0]).map(p => p[1]);
+    const xSorted = idx.map(i => xRaw[i]);
+    const ySorted = idx.map(i => yRaw[i]);
+
+    const cd = compressDuplicateX(xSorted, ySorted);
+    const smooth = smoothSeries(cd.x, cd.y, POINTS_PER_SEGMENT);
+    const xs = smooth.xs;
+    const ys = smooth.ys;
+
+    // Render plot area background "glass"
     ctx.save();
-    roundRectPath(ctx, px0, py0, px1 - px0, py1 - py0, pr);
-    ctx.strokeStyle = "rgba(255,255,255,0.22)";
-    ctx.lineWidth = Math.max(2, Math.round(3 * S));
-    ctx.stroke();
-    ctx.restore();
-
-    const innerPad = Math.round(32 * S);
-    const gx0 = px0 + innerPad;
-    const gy0 = py0 + innerPad;
-    const gx1 = px1 - innerPad;
-    const gy1 = py1 - innerPad;
-
-    // chart background
-    ctx.save();
+    roundRectPath(ctx, plotX0, plotY0, plotX1 - plotX0, plotY1 - plotY0, 22);
+    ctx.clip();
     ctx.fillStyle = "rgba(43,55,75,0.35)";
-    roundRectPath(ctx, gx0, gy0, gx1 - gx0, gy1 - gy0, Math.round(18 * S));
-    ctx.fill();
+    ctx.fillRect(plotX0, plotY0, plotX1 - plotX0, plotY1 - plotY0);
     ctx.restore();
 
-    // prepare series
-    let xRaw = snaps.map(s => s.minutesElapsed);
-    let yRaw = snaps.map(s => clamp(s.wpA, 0, 1));
-
-    // sort by x
-    const order = xRaw.map((v, i) => ({ v, i })).sort((a, b) => a.v - b.v).map(o => o.i);
-    xRaw = order.map(i => xRaw[i]);
-    yRaw = order.map(i => yRaw[i]);
-
-    const cd = compressDuplicateX(xRaw, yRaw);
-    const sm = smoothSeries(cd.x, cd.y, 40);
-    const xs = sm.xs;
-    const ys = sm.ys;
-
+    // axes ranges
     const xmax = xs.length ? Math.max(...xs) : 1;
-    const xMin = -xmax * 0.02;
-    const xMax = xmax * 1.02;
+    const xmin = -xmax * 0.02;
+    const xmaxPad = xmax * 1.02;
+    const ymin = -0.03;
+    const ymax = 1.03;
 
-    const toX = (x) => gx0 + ((x - xMin) / (xMax - xMin)) * (gx1 - gx0);
-    const toY = (y) => gy0 + (1 - y) * (gy1 - gy0);
-
-    // grid lines
-    ctx.save();
-    ctx.lineWidth = Math.round(1.5 * S);
-    ctx.strokeStyle = rgb(THEME.GRID, 0.45);
-    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
-      const yy = toY(t);
-      ctx.beginPath();
-      ctx.moveTo(gx0, yy);
-      ctx.lineTo(gx1, yy);
-      ctx.stroke();
+    function mapX(x) {
+      return plotX0 + ((x - xmin) / (xmaxPad - xmin)) * (plotX1 - plotX0);
     }
-    // x grid light
-    ctx.lineWidth = Math.round(1 * S);
-    ctx.strokeStyle = rgb(THEME.GRID, 0.18);
-    ctx.setLineDash([Math.round(2 * S), Math.round(8 * S)]);
-    for (let i = 1; i <= 5; i++) {
-      const xx = gx0 + (i / 6) * (gx1 - gx0);
-      ctx.beginPath();
-      ctx.moveTo(xx, gy0);
-      ctx.lineTo(xx, gy1);
-      ctx.stroke();
+    function mapY(y) {
+      return plotY1 - ((y - ymin) / (ymax - ymin)) * (plotY1 - plotY0);
     }
-    ctx.setLineDash([]);
-    ctx.restore();
 
-    // midline (50%)
-    ctx.save();
-    ctx.lineWidth = Math.round(2.2 * S);
-    ctx.strokeStyle = "rgba(210,210,210,0.22)";
-    const midY = toY(0.5);
+    // grid
+    function drawGrid() {
+      // y-grid
+      const yTicks = [0, 0.25, 0.5, 0.75, 1.0];
+      for (const t of yTicks) {
+        const yy = mapY(t);
+        ctx.beginPath();
+        ctx.moveTo(plotX0, yy);
+        ctx.lineTo(plotX1, yy);
+        ctx.strokeStyle = "rgba(79,95,122,0.45)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      // x-grid (5 divisions)
+      const div = 5;
+      for (let i = 0; i <= div; i++) {
+        const x = xmin + (i / div) * (xmaxPad - xmin);
+        const xx = mapX(x);
+        ctx.beginPath();
+        ctx.moveTo(xx, plotY0);
+        ctx.lineTo(xx, plotY1);
+        ctx.strokeStyle = "rgba(79,95,122,0.18)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+    drawGrid();
+
+    // 50% line
     ctx.beginPath();
-    ctx.moveTo(gx0, midY);
-    ctx.lineTo(gx1, midY);
+    ctx.moveTo(plotX0, mapY(0.5));
+    ctx.lineTo(plotX1, mapY(0.5));
+    ctx.strokeStyle = "rgba(210,210,210,0.22)";
+    ctx.lineWidth = 2.2;
     ctx.stroke();
-    ctx.restore();
 
     // pregame baseline
-    const pregame = findPregame(snaps);
-    if (cfg.showPregameBaseline && pregame != null) {
-      ctx.save();
-      ctx.lineWidth = Math.round(2 * S);
-      ctx.strokeStyle = rgb(THEME.MUTED, 0.45);
-      ctx.setLineDash([Math.round(10 * S), Math.round(10 * S)]);
-      const yy = toY(pregame);
+    if (SHOW_PREGAME_BASELINE && pregame != null) {
       ctx.beginPath();
-      ctx.moveTo(gx0, yy);
-      ctx.lineTo(gx1, yy);
+      ctx.moveTo(plotX0, mapY(pregame));
+      ctx.lineTo(plotX1, mapY(pregame));
+      ctx.strokeStyle = "rgba(146,158,178,0.45)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 6]);
       ctx.stroke();
       ctx.setLineDash([]);
-      ctx.restore();
     }
 
-    // big swing
-    const { best: swing, bestUpdate } = computeBigSwing(snaps);
-    let bigSwingX = null;
-    for (const s of snaps) if (s.update === bestUpdate) { bigSwingX = s.minutesElapsed; break; }
-    if (bigSwingX != null) {
+    // Fill above/below 0.5
+    function fillArea(whereAbove) {
       ctx.save();
-      ctx.lineWidth = Math.round(2 * S);
-      ctx.strokeStyle = rgb(THEME.MUTED, 0.35);
-      ctx.setLineDash([Math.round(10 * S), Math.round(10 * S)]);
-      const xx = toX(bigSwingX);
       ctx.beginPath();
-      ctx.moveTo(xx, gy0);
-      ctx.lineTo(xx, gy1);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-    }
+      // Build polygon following the curve, then back to baseline
+      let started = false;
 
-    // fill above/below 0.5 + draw colored line segments
-    const colA = rgb(away.color, 0.28);
-    const colB = rgb(home.color, 0.28);
-
-    // fill by building two polygons (above and below)
-    function fillRegion(predicateAbove, fillStyle) {
-      const pts = [];
       for (let i = 0; i < xs.length; i++) {
-        const y = ys[i];
-        if (predicateAbove(y)) pts.push([toX(xs[i]), toY(y)]);
+        const above = ys[i] >= 0.5;
+        if ((whereAbove && above) || (!whereAbove && !above)) {
+          const xx = mapX(xs[i]);
+          const yy = mapY(ys[i]);
+          if (!started) {
+            started = true;
+            ctx.moveTo(xx, mapY(0.5));
+            ctx.lineTo(xx, yy);
+          } else {
+            ctx.lineTo(xx, yy);
+          }
+        } else if (started) {
+          // close segment to baseline at current x
+          const xx = mapX(xs[i]);
+          ctx.lineTo(xx, mapY(0.5));
+          ctx.closePath();
+          // fill and restart
+          ctx.fill();
+          started = false;
+          ctx.beginPath();
+        }
       }
-      if (pts.length < 2) return;
 
-      ctx.save();
-      ctx.fillStyle = fillStyle;
-      ctx.beginPath();
-      // start at first point projected to baseline
-      ctx.moveTo(pts[0][0], midY);
-      for (const [px, py] of pts) ctx.lineTo(px, py);
-      ctx.lineTo(pts[pts.length - 1][0], midY);
-      ctx.closePath();
-      ctx.fill();
+      if (started) {
+        const xx = mapX(xs[xs.length - 1]);
+        ctx.lineTo(xx, mapY(0.5));
+        ctx.closePath();
+        ctx.fill();
+      }
+
       ctx.restore();
     }
 
-    fillRegion((y) => y >= 0.5, colA);
-    fillRegion((y) => y < 0.5, colB);
+    // set fill styles
+    ctx.fillStyle = `rgba(${awayTeam.color.r},${awayTeam.color.g},${awayTeam.color.b},0.28)`;
+    fillArea(true); // above = away favored
+    ctx.fillStyle = `rgba(${homeTeam.color.r},${homeTeam.color.g},${homeTeam.color.b},0.28)`;
+    fillArea(false);
 
-    // line segments with color based on midy
-    ctx.save();
-    ctx.lineWidth = Math.round(5.2 * S);
+    // Line colored by >0.5 away vs <0.5 home
+    ctx.lineWidth = 5.2;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
+
     for (let i = 0; i < xs.length - 1; i++) {
-      const ymid = 0.5 * (ys[i] + ys[i + 1]);
-      ctx.strokeStyle = (ymid >= 0.5) ? rgb(away.color, 0.95) : rgb(home.color, 0.95);
+      const mid = 0.5 * (ys[i] + ys[i + 1]);
+      const col = mid >= 0.5 ? awayTeam.color : homeTeam.color;
+      ctx.strokeStyle = `rgba(${col.r},${col.g},${col.b},0.95)`;
       ctx.beginPath();
-      ctx.moveTo(toX(xs[i]), toY(ys[i]));
-      ctx.lineTo(toX(xs[i + 1]), toY(ys[i + 1]));
+      ctx.moveTo(mapX(xs[i]), mapY(ys[i]));
+      ctx.lineTo(mapX(xs[i + 1]), mapY(ys[i + 1]));
       ctx.stroke();
     }
-    ctx.restore();
 
-    // end marker dot (smoothed endpoint)
+    // end marker dot at end of smoothed line
     const lastX = xs.length ? xs[xs.length - 1] : 0;
     const lastY = ys.length ? ys[ys.length - 1] : 0.5;
-    const lastCol = (lastY >= 0.5) ? away.color : home.color;
-    const ex = toX(lastX);
-    const ey = toY(lastY);
+    const lastCol = lastY >= 0.5 ? awayTeam.color : homeTeam.color;
+    const endPX = mapX(lastX);
+    const endPY = mapY(lastY);
 
     // glow rings
-    ctx.save();
     for (let i = 0; i < 3; i++) {
-      const sz = [380, 260, 180][i] * S;
-      const alpha = 0.14 - i * 0.04;
-      ctx.fillStyle = rgb(lastCol, alpha);
+      const sz = [38, 30, 22][i];
+      const alpha = [0.14, 0.10, 0.06][i];
       ctx.beginPath();
-      ctx.arc(ex, ey, Math.sqrt(sz / Math.PI), 0, Math.PI * 2);
+      ctx.arc(endPX, endPY, sz, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${lastCol.r},${lastCol.g},${lastCol.b},${alpha})`;
       ctx.fill();
     }
-    // solid dot + white stroke
-    ctx.fillStyle = rgb(lastCol, 1);
+    // main dot
     ctx.beginPath();
-    ctx.arc(ex, ey, Math.sqrt((185 * S) / Math.PI), 0, Math.PI * 2);
+    ctx.arc(endPX, endPY, 14, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${lastCol.r},${lastCol.g},${lastCol.b},1)`;
     ctx.fill();
-    ctx.lineWidth = Math.round(4 * S);
-    ctx.strokeStyle = rgb(THEME.TEXT, 1);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = `rgba(${THEME.TEXT.r},${THEME.TEXT.g},${THEME.TEXT.b},1)`;
     ctx.stroke();
-    ctx.restore();
 
-    // axes labels (simple)
-    const axisFont = `700 ${Math.round(16 * S)}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-    drawText(ctx, "Win Probability", gx0 - Math.round(10 * S), (gy0 + gy1) / 2, axisFont, rgb(THEME.SUBTEXT, 1), "right", "middle");
-    drawText(ctx, "Game Progress (minutes elapsed)", (gx0 + gx1) / 2, gy1 + Math.round(26 * S), axisFont, rgb(THEME.SUBTEXT, 1), "center", "top");
-
-    // y tick labels
-    const yTickFont = `800 ${Math.round(14 * S)}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
-      const yy = toY(t);
-      drawText(ctx, `${Math.round(t * 100)}%`, gx0 - Math.round(12 * S), yy, yTickFont, rgb(THEME.TEXT, 1), "right", "middle");
+    // y-axis labels
+    const yTickLabels = [
+      { v: 0, t: "0%" },
+      { v: 0.25, t: "25%" },
+      { v: 0.5, t: "50%" },
+      { v: 0.75, t: "75%" },
+      { v: 1.0, t: "100%" },
+    ];
+    setFont(14, 800);
+    ctx.fillStyle = rgbaStr(THEME.TEXT);
+    for (const yt of yTickLabels) {
+      const yy = mapY(yt.v);
+      ctx.fillText(yt.t, plotX0 - 48, yy + 5);
     }
 
-    // ============================================================
-    // BOTTOM PILLS (LIVE / MOMENTUM / CLUTCH / SWING / PREGAME EDGE)
-    // ============================================================
+    // axes strokes
+    ctx.beginPath();
+    ctx.moveTo(plotX0, plotY0);
+    ctx.lineTo(plotX0, plotY1);
+    ctx.strokeStyle = "rgba(112,126,152,0.35)";
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(plotX0, plotY1);
+    ctx.lineTo(plotX1, plotY1);
+    ctx.strokeStyle = "rgba(112,126,152,0.35)";
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
+    // axis labels
+    setFont(16, 800);
+    ctx.fillStyle = rgbaStr(THEME.SUBTEXT);
+    const xLab = "Game Progress (minutes elapsed)";
+    ctx.fillText(xLab, plotX0 + (plotX1 - plotX0) / 2 - textW(xLab) / 2, plotY1 + 46);
+
+    // bottom pills
     const status = last.minutesLeft <= 1e-6 ? "FINAL" : "LIVE";
-    const mom = computeMomentum(snaps, cfg.momentumN);
+    const mom = computeMomentum(snaps, MOMENTUM_N);
     const momPct = Math.round(mom * 100);
-    const momBg = momPct >= 0 ? away.color : home.color;
+    const momBg = momPct >= 0 ? awayTeam.color : homeTeam.color;
+
     const clutch = computeClutchIndex(snaps);
+    const { swing, update: swingU } = computeBigSwing(snaps);
     const swingPct = Math.round(swing * 100);
-    const pre = pregame != null ? Math.round((pregame - 0.5) * 100) : null;
 
-    const items = [];
-    if (status === "LIVE") items.push({ text: "● LIVE", bg: THEME.LIVE_BG, a: 1 });
-    else items.push({ text: "FINAL", bg: THEME.FINAL_BG, a: 1 });
+    const pills = [];
+    if (status === "LIVE") pills.push({ text: "● LIVE", bg: THEME.LIVE_BG });
+    else pills.push({ text: "FINAL", bg: THEME.FINAL_BG });
 
-    items.push({ text: `MOMENTUM ${momPct >= 0 ? "+" : ""}${momPct}%`, bg: momBg, a: 0.96 });
-    items.push({ text: `CLUTCH ${clutch}`, bg: [100, 116, 139], a: 0.92 });
-    items.push({ text: `BIG SWING ${swingPct >= 0 ? "+" : ""}${swingPct}% @#${bestUpdate}`, bg: [71, 85, 105], a: 0.88 });
-    if (pre != null) items.push({ text: `PREGAME EDGE ${pre >= 0 ? "+" : ""}${pre}%`, bg: [51, 65, 85], a: 0.84 });
+    pills.push({ text: `MOMENTUM ${momPct >= 0 ? "+" : ""}${momPct}%`, bg: { ...momBg, a: 0.96 } });
+    pills.push({ text: `CLUTCH ${clutch}`, bg: { r: 100, g: 116, b: 139, a: 0.92 } });
+    pills.push({ text: `BIG SWING ${swingPct >= 0 ? "+" : ""}${swingPct}% @#${swingU}`, bg: { r: 71, g: 85, b: 105, a: 0.88 } });
 
-    const pillsY = y1 - Math.round(98 * S);
-    const availLeft = x0 + Math.round(64 * S);
-    const availRight = x1 - Math.round(64 * S);
-    const availW = availRight - availLeft;
+    if (pregame != null) {
+      const edge = Math.round((pregame - 0.5) * 100);
+      pills.push({ text: `PREGAME EDGE ${edge >= 0 ? "+" : ""}${edge}%`, bg: { r: 51, g: 65, b: 85, a: 0.86 } });
+    }
 
-    let fontPx = Math.round(24 * S);
-    let pillFont = `700 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-    const r = Math.round(24 * S);
-    const padX0 = Math.round(24 * S);
-    const padY0 = Math.round(14 * S);
-    const gap = Math.round(18 * S);
+    // draw pills centered
+    function measurePill(text, fontPx, padX, padY) {
+      setFont(fontPx, 800);
+      const w = textW(text);
+      return { w: w + 2 * padX, h: fontPx + 2 * padY };
+    }
 
-    // auto-shrink if too wide
-    for (let tries = 0; tries < 10; tries++) {
-      pillFont = `700 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
-      let total = 0;
-      for (const it of items) {
-        const m = pillMeasure(ctx, it.text, pillFont, padX0, padY0);
-        total += m.w;
+    function drawPill(x, y, text, bg, fontPx, padX, padY) {
+      const { w, h } = measurePill(text, fontPx, padX, padY);
+      const r = Math.floor(h / 2);
+
+      // bg
+      ctx.save();
+      ctx.globalAlpha = bg.a ?? 1;
+      fillRoundedRect(ctx, x, y, w, h, r, `rgb(${bg.r},${bg.g},${bg.b})`);
+      ctx.restore();
+
+      strokeRoundedRect(ctx, x, y, w, h, r, "rgba(255,255,255,0.28)", 2);
+
+      setFont(fontPx, 900);
+      ctx.fillStyle = "rgba(255,255,255,0.98)";
+      ctx.fillText(text, x + padX, y + h - padY - 2);
+
+      return { w, h };
+    }
+
+    const pillsY = y1 - 98;
+    const baseFontPx = 24;
+    const padPxX = 24;
+    const padPxY = 14;
+    const gap = 18;
+
+    // shrink font if needed
+    let fontPx = baseFontPx;
+    let totalW;
+    while (true) {
+      totalW = 0;
+      for (let i = 0; i < pills.length; i++) {
+        totalW += measurePill(pills[i].text, fontPx, padPxX, padPxY).w;
+        if (i < pills.length - 1) totalW += gap;
       }
-      total += gap * (items.length - 1);
-      if (total <= availW || fontPx <= Math.round(16 * S)) break;
-      fontPx = Math.round(fontPx * 0.92);
+      const avail = (x1 - x0) - 128;
+      if (totalW <= avail || fontPx <= Math.floor(baseFontPx * 0.7)) break;
+      fontPx = Math.floor(fontPx * 0.92);
     }
-    pillFont = `700 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`;
 
-    // draw centered row
-    const measured = items.map(it => ({ it, m: pillMeasure(ctx, it.text, pillFont, padX0, padY0) }));
-    const totalW = measured.reduce((a, b) => a + b.m.w, 0) + gap * (measured.length - 1);
-    let x = availLeft + Math.max(0, Math.floor((availW - totalW) / 2));
-
-    for (const { it, m } of measured) {
-      const bg = rgb(it.bg, it.a);
-      const stroke = "rgba(255,255,255,0.28)";
-      drawPill(ctx, x, pillsY, m.w, m.h, r, bg, stroke, it.text, pillFont, "rgba(255,255,255,1)");
-      x += m.w + gap;
+    let x = x0 + 64 + Math.max(0, (((x1 - x0) - 128) - totalW) / 2);
+    for (const p of pills) {
+      const drawn = drawPill(x, pillsY, p.text, p.bg, fontPx, padPxX, padPxY);
+      x += drawn.w + gap;
     }
-  }
 
-  // ============================================================
-  // ASSET LOADING
-  // ============================================================
-  function loadImage(src) {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      // GitHub Pages safe:
-      img.src = src;
+    // Logos last, so they sit crisp over gradients
+    // (draw as-is; if you want auto-key transparency, we can do it later with canvas pixel ops)
+    return Promise.all([
+      loadImage(awayTeam.logo).catch(() => null),
+      loadImage(homeTeam.logo).catch(() => null),
+    ]).then(([imgAway, imgHome]) => {
+      function drawLogo(img, x, y, size) {
+        if (!img) {
+          // fallback: colored circle
+          ctx.save();
+          ctx.fillStyle = "rgba(255,255,255,0.10)";
+          ctx.beginPath();
+          ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          return;
+        }
+        // subtle shadow
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.drawImage(img, x + 3, y + 6, size, size);
+        ctx.restore();
+
+        ctx.drawImage(img, x, y, size, size);
+      }
+
+      drawLogo(imgAway, logoLeftX, logoY, logoBox);
+      drawLogo(imgHome, logoRightX, logoY, logoBox);
     });
   }
 
-  async function loadAssets(awayTeam, homeTeam) {
-    const away = TEAMS[awayTeam];
-    const home = TEAMS[homeTeam];
-    const [logoAway, logoHome] = await Promise.all([
-      loadImage(away.logo).catch(() => null),
-      loadImage(home.logo).catch(() => null),
-    ]);
-    const footballIcon = footballIconCanvas(64);
-    return { logoAway, logoHome, footballIcon };
-  }
-
-  // ============================================================
-  // FETCH + LOOP
-  // ============================================================
-  async function fetchSnapshots(awayTeam, homeTeam) {
-    if (!SHEET_CSV_URL || SHEET_CSV_URL.includes("PASTE_YOUR_PUBLISHED")) {
-      throw new Error("Set SHEET_CSV_URL in app.js to your published Google Sheet CSV endpoint.");
-    }
-
+  /**********************
+   * FETCH + LOOP
+   **********************/
+  async function fetchCSV() {
     const res = await fetch(SHEET_CSV_URL, { cache: "no-store" });
-    if (!res.ok) throw new Error(`Failed to fetch CSV: HTTP ${res.status}`);
-    const text = await res.text();
-
-    const csv = parseCSV(text);
-    const { headers, out: objs } = rowsToObjects(csv);
-    const snaps = parseSnapshots(objs, headers, awayTeam, homeTeam);
-    return snaps;
+    if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
+    return await res.text();
   }
 
-  // ============================================================
-  // UI + BOOT
-  // ============================================================
-  function ensureRoot() {
-    let root = document.getElementById("app");
-    if (!root) {
-      root = document.createElement("div");
-      root.id = "app";
-      document.body.appendChild(root);
-    }
-    root.style.display = "grid";
-    root.style.placeItems = "center";
-    root.style.padding = "18px";
-    root.style.background = "transparent";
-    root.style.color = "white";
-    root.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial";
-    return root;
-  }
-
-  function buildUI(root, state) {
-    // Controls
-    const bar = document.createElement("div");
-    bar.style.width = "min(1100px, 100%)";
-    bar.style.display = "flex";
-    bar.style.gap = "12px";
-    bar.style.alignItems = "center";
-    bar.style.justifyContent = "space-between";
-    bar.style.flexWrap = "wrap";
-    bar.style.marginBottom = "12px";
-
-    const left = document.createElement("div");
-    left.style.display = "flex";
-    left.style.gap = "10px";
-    left.style.alignItems = "center";
-    left.style.flexWrap = "wrap";
-
-    const mkSelect = (labelText, value, onChange) => {
-      const wrap = document.createElement("div");
-      wrap.style.display = "flex";
-      wrap.style.alignItems = "center";
-      wrap.style.gap = "8px";
-
-      const lab = document.createElement("span");
-      lab.textContent = labelText;
-      lab.style.opacity = "0.85";
-      lab.style.fontWeight = "600";
-
-      const sel = document.createElement("select");
-      sel.style.padding = "8px 10px";
-      sel.style.borderRadius = "10px";
-      sel.style.border = "1px solid rgba(255,255,255,0.18)";
-      sel.style.background = "rgba(28,37,54,0.85)";
-      sel.style.color = "white";
-      sel.style.fontWeight = "700";
-      sel.style.outline = "none";
-
-      for (const k of Object.keys(TEAMS)) {
-        const opt = document.createElement("option");
-        opt.value = k;
-        opt.textContent = TEAMS[k].display;
-        if (k === value) opt.selected = true;
-        sel.appendChild(opt);
+  async function refreshOnce() {
+    try {
+      if (!SHEET_CSV_URL || SHEET_CSV_URL.includes("PASTE_YOUR_PUBLISHED_CSV_URL_HERE")) {
+        throw new Error("Set SHEET_CSV_URL at the top of app.js to your published Google Sheet CSV URL.");
       }
-      sel.addEventListener("change", () => onChange(sel.value));
-      wrap.appendChild(lab);
-      wrap.appendChild(sel);
-      return wrap;
-    };
 
-    left.appendChild(mkSelect("Away", state.awayTeam, (v) => { state.awayTeam = v; state.trigger(); }));
-    left.appendChild(mkSelect("Home", state.homeTeam, (v) => { state.homeTeam = v; state.trigger(); }));
+      statusLine.textContent = "Fetching sheet…";
+      const text = await fetchCSV();
 
-    const right = document.createElement("div");
-    right.style.display = "flex";
-    right.style.gap = "10px";
-    right.style.alignItems = "center";
-    right.style.flexWrap = "wrap";
+      const { headers, records } = parseCSV(text);
+      if (!headers.length) throw new Error("CSV parse produced no headers.");
 
-    const status = document.createElement("div");
-    status.style.opacity = "0.85";
-    status.style.fontWeight = "700";
-    status.id = "statusText";
-    status.textContent = "Loading...";
+      const { awayKey, homeKey, snaps, pregame } = buildSnapshots(headers, records);
 
-    const dl = document.createElement("button");
-    dl.textContent = "Download PNG";
-    dl.style.padding = "8px 12px";
-    dl.style.borderRadius = "10px";
-    dl.style.border = "1px solid rgba(255,255,255,0.18)";
-    dl.style.background = "rgba(43,55,75,0.85)";
-    dl.style.color = "white";
-    dl.style.fontWeight = "800";
-    dl.style.cursor = "pointer";
-    dl.addEventListener("click", () => {
-      const a = document.createElement("a");
-      a.download = `${state.awayTeam}_vs_${state.homeTeam}.png`;
-      a.href = state.canvas.toDataURL("image/png");
-      a.click();
-    });
+      statusLine.textContent =
+        `Away=${awayKey} | Home=${homeKey} | snapshots=${snaps.length}` +
+        (REFRESH_SEC ? ` | auto-refresh=${REFRESH_SEC}s` : "");
 
-    right.appendChild(status);
-    right.appendChild(dl);
-
-    bar.appendChild(left);
-    bar.appendChild(right);
-
-    // Canvas
-    const canvas = document.createElement("canvas");
-    canvas.style.width = "min(1100px, 100%)";
-    canvas.style.height = "auto";
-    canvas.style.borderRadius = "18px";
-    canvas.style.boxShadow = "0 18px 55px rgba(0,0,0,0.45)";
-    canvas.style.background = `rgba(${THEME.BG[0]},${THEME.BG[1]},${THEME.BG[2]},1)`;
-
-    root.appendChild(bar);
-    root.appendChild(canvas);
-
-    state.canvas = canvas;
-    state.statusEl = status;
-  }
-
-  async function drawOnce(state) {
-    const cfg = {
-      leagueName: DEFAULTS.leagueName,
-      weekLabel: DEFAULTS.weekLabel,
-      awayTeam: state.awayTeam,
-      homeTeam: state.homeTeam,
-      refreshSeconds: state.refreshSeconds,
-      canvasW: DEFAULTS.canvasW,
-      canvasH: DEFAULTS.canvasH,
-      supersample: DEFAULTS.supersample,
-      showPregameBaseline: DEFAULTS.showPregameBaseline,
-      momentumN: DEFAULTS.momentumN,
-      displayClampLo: DEFAULTS.displayClampLo,
-      displayClampHi: DEFAULTS.displayClampHi,
-    };
-
-    // enforce different teams
-    if (cfg.awayTeam === cfg.homeTeam) {
-      state.statusEl.textContent = "Pick two different teams.";
-      return;
+      await renderCard({ awayKey, homeKey, snaps, pregame });
+    } catch (e) {
+      console.error(e);
+      statusLine.textContent = `Error: ${e.message}`;
+      // show something even on error
+      ctx.clearRect(0, 0, FINAL_W, FINAL_H);
+      ctx.fillStyle = rgbaStr(THEME.BG);
+      ctx.fillRect(0, 0, FINAL_W, FINAL_H);
+      ctx.fillStyle = "rgba(245,247,252,0.9)";
+      ctx.font = "700 22px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.fillText("Failed to render.", 60, 80);
+      ctx.font = "500 16px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.fillStyle = "rgba(199,207,220,0.9)";
+      wrapText(ctx, e.message, 60, 120, FINAL_W - 120, 22);
     }
-
-    // canvas sizing
-    const W = cfg.canvasW * cfg.supersample;
-    const H = cfg.canvasH * cfg.supersample;
-    state.canvas.width = W;
-    state.canvas.height = H;
-
-    const ctx = state.canvas.getContext("2d");
-
-    state.statusEl.textContent = "Loading sheet…";
-
-    const [assets, snaps] = await Promise.all([
-      loadAssets(cfg.awayTeam, cfg.homeTeam),
-      fetchSnapshots(cfg.awayTeam, cfg.homeTeam),
-    ]);
-
-    renderCard(ctx, snaps, cfg, assets);
-
-    const now = new Date();
-    state.statusEl.textContent = `Updated ${now.toLocaleTimeString()}`;
   }
 
-  async function boot() {
-    const q = parseQuery();
-    const state = {
-      awayTeam: TEAMS[q.away] ? q.away : DEFAULTS.awayTeam,
-      homeTeam: TEAMS[q.home] ? q.home : DEFAULTS.homeTeam,
-      refreshSeconds: q.refreshSeconds,
-      canvas: null,
-      statusEl: null,
-      timer: null,
-      inFlight: false,
-      pending: false,
-      trigger: null,
-    };
-
-    const root = ensureRoot();
-    buildUI(root, state);
-
-    state.trigger = async () => {
-      if (state.inFlight) { state.pending = true; return; }
-      state.inFlight = true;
-      try {
-        await drawOnce(state);
-      } catch (e) {
-        console.error(e);
-        state.statusEl.textContent = String(e?.message || e);
-      } finally {
-        state.inFlight = false;
-        if (state.pending) { state.pending = false; state.trigger(); }
+  function wrapText(c, text, x, y, maxW, lineH) {
+    const words = String(text).split(/\s+/);
+    let line = "";
+    for (const w of words) {
+      const test = line ? line + " " + w : w;
+      if (c.measureText(test).width > maxW) {
+        c.fillText(line, x, y);
+        line = w;
+        y += lineH;
+      } else {
+        line = test;
       }
-    };
-
-    await state.trigger();
-
-    clearInterval(state.timer);
-    state.timer = setInterval(() => state.trigger(), Math.round(state.refreshSeconds * 1000));
+    }
+    if (line) c.fillText(line, x, y);
   }
 
   // Start
-  window.addEventListener("DOMContentLoaded", boot);
+  refreshOnce();
+  if (REFRESH_SEC) setInterval(refreshOnce, REFRESH_SEC * 1000);
 })();
