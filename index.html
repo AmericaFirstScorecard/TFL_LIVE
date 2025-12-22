@@ -38,60 +38,62 @@
           </div>
 
           <div class="teams">
-            <div class="team team--away">
-              <div class="team__crest">
-                <div class="team__possession team__possession--left" id="teamAPossession" aria-hidden="true">🏈</div>
-                <div class="team__logo" id="teamALogo"></div>
+            <div class="teams__row">
+              <div class="team team--away">
+                <div class="team__crest">
+                  <div class="team__possession team__possession--left" id="teamAPossession" aria-hidden="true">🏈</div>
+                  <div class="team__logo" id="teamALogo"></div>
+                </div>
+                <div class="team__name" id="teamAName">Team A</div>
+                <div class="team__record" id="teamARecord">&nbsp;</div>
               </div>
-              <div class="team__name" id="teamAName">Team A</div>
-              <div class="team__record" id="teamARecord">&nbsp;</div>
-            </div>
-            <div class="score">
-              <div class="score__line">
-                <div class="score__team">
-                  <span class="score__delta" id="teamAScoreDelta"></span>
-                  <span class="score__value" id="teamAScore">0</span>
-                </div>
-                <div class="score__center">
-                  <span class="score__winner" id="winnerArrow" aria-hidden="true"></span>
-                  <span class="score__divider">—</span>
-                </div>
-                <div class="score__team">
-                  <span class="score__delta" id="teamBScoreDelta"></span>
-                  <span class="score__value" id="teamBScore">0</span>
+              <div class="score">
+                <div class="score__line">
+                  <div class="score__team">
+                    <span class="score__delta" id="teamAScoreDelta"></span>
+                    <span class="score__value" id="teamAScore">0</span>
+                  </div>
+                  <div class="score__center">
+                    <span class="score__winner" id="winnerArrow" aria-hidden="true"></span>
+                    <span class="score__divider">—</span>
+                  </div>
+                  <div class="score__team">
+                    <span class="score__delta" id="teamBScoreDelta"></span>
+                    <span class="score__value" id="teamBScore">0</span>
+                  </div>
                 </div>
               </div>
-              <div class="score__ticker" aria-live="polite">
-                <div class="ticker ticker--clock">
-                  <div class="ticker__label">Game clock</div>
-                  <div class="ticker__value">
-                    <span class="ticker__pill" id="tickerQuarter">Q-</span>
-                    <span class="ticker__clock" id="tickerClock">--:--</span>
-                  </div>
+              <div class="team team--home">
+                <div class="team__crest">
+                  <div class="team__possession team__possession--right" id="teamBPossession" aria-hidden="true">🏈</div>
+                  <div class="team__logo" id="teamBLogo"></div>
                 </div>
-                <div class="ticker ticker--down">
-                  <div class="ticker__label">Down &amp; distance</div>
-                  <div class="ticker__value">
-                    <span class="ticker__pill" id="tickerDown">—</span>
-                    <span class="ticker__sub" id="tickerYtg">YTG —</span>
-                  </div>
-                </div>
-                <div class="ticker ticker--poss">
-                  <div class="ticker__label">Possession</div>
-                  <div class="ticker__value">
-                    <span class="ticker__ball" id="tickerBall" aria-hidden="true">🏈</span>
-                    <span class="ticker__pill ticker__pill--outline" id="tickerPossession">—</span>
-                  </div>
-                </div>
+                <div class="team__name" id="teamBName">Team B</div>
+                <div class="team__record" id="teamBRecord">&nbsp;</div>
               </div>
             </div>
-            <div class="team team--home">
-              <div class="team__crest">
-                <div class="team__possession team__possession--right" id="teamBPossession" aria-hidden="true">🏈</div>
-                <div class="team__logo" id="teamBLogo"></div>
+            <div class="score__ticker" aria-live="polite">
+              <div class="ticker ticker--clock">
+                <div class="ticker__label">Game clock</div>
+                <div class="ticker__value">
+                  <span class="ticker__pill" id="tickerQuarter">Q-</span>
+                  <span class="ticker__clock" id="tickerClock">--:--</span>
+                </div>
               </div>
-              <div class="team__name" id="teamBName">Team B</div>
-              <div class="team__record" id="teamBRecord">&nbsp;</div>
+              <div class="ticker ticker--down">
+                <div class="ticker__label">Down &amp; distance</div>
+                <div class="ticker__value">
+                  <span class="ticker__pill" id="tickerDown">—</span>
+                  <span class="ticker__sub" id="tickerYtg">YTG —</span>
+                </div>
+              </div>
+              <div class="ticker ticker--poss">
+                <div class="ticker__label">Possession</div>
+                <div class="ticker__value">
+                  <span class="ticker__ball" id="tickerBall" aria-hidden="true">🏈</span>
+                  <span class="ticker__pill ticker__pill--outline" id="tickerPossession">—</span>
+                </div>
+              </div>
             </div>
           </div>
 
