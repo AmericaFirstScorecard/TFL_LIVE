@@ -412,6 +412,8 @@
       return { snapshots: [], teamA: "Team A", teamB: "Team B", teams: [], baseline: null };
     }
 
+    const columns = rows.columns || Object.keys(rows[0] || {});
+
     const norm = (obj) => {
       const out = {};
       for (const [k, v] of Object.entries(obj)) out[String(k).trim().toLowerCase()] = v;
@@ -441,9 +443,8 @@
       return clampProb(p);
     };
 
-    const mapRow = norm(rows[0]);
-    const teamAKey = pick(mapRow, ["team a", "away", "team_a_code"]) || "Team A";
-    const teamBKey = pick(mapRow, ["team b", "home", "team_b_code"]) || "Team B";
+    const teamAKey = columns[2] || columns.find((c) => /team\s*a/i.test(c)) || "Team A";
+    const teamBKey = columns[3] || columns.find((c) => /team\s*b/i.test(c)) || "Team B";
     const teamAName = resolveTeam(teamAKey).displayName;
     const teamBName = resolveTeam(teamBKey).displayName;
 
@@ -463,8 +464,12 @@
       const probA = parseProb(pick(r, ["team a win probability", "away win probability", "team a win prob"]));
       const probB = probA != null ? clampProb(1 - probA) : null;
 
-      const rawScoreA = parseNumber(pick(r, ["team a score", "team a point", "team a points", "team a"]));
-      const rawScoreB = parseNumber(pick(r, ["team b score", "team b point", "team b points", "team b"]));
+      const rawScoreA =
+        parseNumber(pick(r, ["team a score", "team a point", "team a points"])) ??
+        parseNumber(row[teamAKey]);
+      const rawScoreB =
+        parseNumber(pick(r, ["team b score", "team b point", "team b points"])) ??
+        parseNumber(row[teamBKey]);
       if (rawScoreA != null) rollingScoreA = rawScoreA;
       if (rawScoreB != null) rollingScoreB = rawScoreB;
       const scoreA = rollingScoreA;
@@ -478,7 +483,7 @@
       const distance = String(pick(r, ["distance", "dist"]) || "").trim();
       const ytg = String(pick(r, ["yards to goal", "ytg"]) || "").trim();
 
-      const pregame = parseProb(pick(r, ["pregame", "baseline"])) ?? null;
+      const pregame = parseProb(pick(r, ["pregame", "baseline", "pregame win prob"])) ?? null;
 
       return {
         update,
@@ -1253,7 +1258,7 @@
   async function setLogo(el, logoKey) {
     if (!el) return;
     const key = (logoKey || "").toLowerCase().trim();
-    const mapped = LOGO_MAP[key] || logoKey;
+    const mapped = LOGO_MAP[key];
 
     if (!mapped) {
       el.style.backgroundImage =
