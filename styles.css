@@ -166,13 +166,21 @@ body {
 }
 
 .teams {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 0 auto 12px;
+  max-width: 1080px;
+  width: 100%;
+}
+
+.teams__row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   justify-items: center;
   gap: 16px;
-  margin: 0 auto 12px;
-  max-width: 1080px;
   width: 100%;
 }
 
@@ -324,11 +332,13 @@ body {
 }
 
 .score__ticker {
-  margin-top: 10px;
+  margin-top: 6px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
   width: 100%;
+  max-width: 760px;
+  justify-content: center;
 }
 
 .ticker {
@@ -1257,9 +1267,13 @@ body {
 
 @media (max-width: 900px) {
   .teams {
+    max-width: 540px;
+    width: 100%;
+  }
+
+  .teams__row {
     grid-template-columns: 1fr;
-    justify-items: center;
-    max-width: 520px;
+    width: 100%;
   }
 
   .hero {
