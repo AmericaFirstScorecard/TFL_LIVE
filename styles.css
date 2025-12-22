@@ -273,6 +273,11 @@ body {
   font-size: 12px;
 }
 
+#winProbChart {
+  height: 220px !important;
+  max-height: 220px;
+}
+
 .insights {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

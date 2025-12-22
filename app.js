@@ -6,7 +6,10 @@
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv";
 
   const MVP_CSV_URL =
-    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQp0jxVIwA59hH031QxJFBsXdQVIi7fNdPS5Ra2w1lK2UYA08rC0moSSqoKPSFL8BRZFh_hC4cO8ymk/pub?output=csv";
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQp0jxVIwA59hH031QxJFBsXdQVIi7fNdPS5Ra2w1lK2UYA08rC0moSSqoKPSFL8BRZFh_hC4cO8ymk/pub?output=xlsx";
+
+  const TEAM_A = { name: "Team A", logoFile: "Cards.png" };
+  const TEAM_B = { name: "Team B", logoFile: "cowboys.png" };
 
   const POLL_MS = 30_000;
 
@@ -17,29 +20,9 @@
   const MOMENTUM_THRESHOLD = 0.025;
   const BIG_SWING_THRESHOLD = 0.12;
 
-  // Try to be forgiving about team naming and file casing
   const LOGO_MAP = {
-    cards: "Cards.png",
-    cardinals: "Cards.png",
-    "arizona cardinals": "Cards.png",
-    lou: "Cards.png",
-    louis: "Cards.png",
-
-    bengals: "bengals.png",
-    "cincinnati bengals": "bengals.png",
-
-    "49ers": "Sanfran.png",
-    sanfran: "Sanfran.png",
-    "san fran": "Sanfran.png",
-    "san francisco": "Sanfran.png",
-    "san francisco 49ers": "Sanfran.png",
-    sf: "Sanfran.png",
-
-    cowboys: "cowboys.png",
-    "dallas cowboys": "cowboys.png",
-
-    giants: "giants.png",
-    "new york giants": "giants.png",
+    [TEAM_A.name.toLowerCase()]: TEAM_A.logoFile,
+    [TEAM_B.name.toLowerCase()]: TEAM_B.logoFile,
   };
 
   // TFL-provided team code mapping -> display name + logo slug
@@ -318,6 +301,14 @@
     return text;
   }
 
+  async function fetchArrayBuffer(url) {
+    const u = new URL(url, window.location.href);
+    u.searchParams.set("_cb", Date.now().toString());
+    const res = await fetch(u.toString(), { method: "GET", cache: "no-store", redirect: "follow" });
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} for ${u.toString()}`);
+    return res.arrayBuffer();
+  }
+
   async function fetchMatchup() {
     setLoading(els.winLoading, true);
     toggleError(els.winError, false);
@@ -345,8 +336,8 @@
     const url = overrideUrl("mvp") || MVP_CSV_URL;
 
     try {
-      const text = await fetchText(url);
-      const records = parseMvpCSV(text);
+      const buffer = await fetchArrayBuffer(url);
+      const records = parseMvpXlsx(buffer);
       state.lastMvpRecords = records;
       renderMvp(records);
       setLoading(els.mvpLoading, false);
@@ -415,7 +406,7 @@
       const scoreB = parseNumber(pick(r, ["team b point", "team b points"])) ?? 0;
 
       const hasBall = parseNumber(pick(r, ["team a has ball (1=yes, 0=no)", "team a has ball"]));
-      const possession = hasBall == null ? "" : hasBall === 1 ? teamA : teamB;
+      const possession = hasBall == null ? "" : hasBall === 1 ? TEAM_A.name : TEAM_B.name;
 
       const quarter = String(pick(r, ["quarter", "qtr"]) || "").trim();
       const down = String(pick(r, ["down"]) || "").trim();
@@ -441,14 +432,18 @@
     });
 
     const baseline = snapshots.find((s) => s.pregame != null)?.pregame ?? snapshots[0]?.winProbHome ?? null;
-    const teams = Array.from(new Set([teamA, teamB].filter(Boolean)));
+    const teams = Array.from(new Set([TEAM_A.name, TEAM_B.name].filter(Boolean)));
 
-    return { snapshots, teamA, teamB, teams, baseline };
+    return { snapshots, teams, baseline };
   }
 
-  function parseMvpCSV(text) {
-    const rows = d3.csvParse(text);
-    if (!rows || !rows.length) return [];
+  function parseMvpXlsx(buffer) {
+    if (typeof XLSX === "undefined") throw new Error("XLSX library not loaded");
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) return [];
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+    if (!rows.length) return [];
 
     const norm = (obj) => {
       const out = {};
@@ -490,10 +485,13 @@
   // =======================
   // RENDERING
   // =======================
-  function renderMatchup({ snapshots, teamA, teamB, teams, baseline }) {
+  function renderMatchup({ snapshots, teams, baseline }) {
     if (!snapshots.length) return;
 
-    const labels = snapshots.map((s) => s.minuteLeft ?? s.update);
+    const maxMinute = Math.max(...snapshots.map((s) => s.minuteLeft ?? 0));
+    const labels = snapshots.map((s) =>
+      formatElapsed(Math.max(0, maxMinute - (s.minuteLeft ?? maxMinute)))
+    );
 
     const home = smoothSeries(snapshots.map((s) => toPct(s.winProbHome)));
     const away = smoothSeries(snapshots.map((s) => toPct(s.winProbAway)));
@@ -883,10 +881,10 @@
     return Array.from(new Set([base, lower, upperFirst, titleish]));
   }
 
-  async function setLogo(el, teamName) {
+  async function setLogo(el, logoKey) {
     if (!el) return;
-    const key = (teamName || "").toLowerCase().trim();
-    const mapped = LOGO_MAP[key];
+    const key = (logoKey || "").toLowerCase().trim();
+    const mapped = LOGO_MAP[key] || logoKey;
 
     if (!mapped) {
       el.style.backgroundImage =
