@@ -955,20 +955,24 @@
     const map = new Map();
     if (!sheetName) return map;
     const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "", range: 2 });
+    const imageKeys = [
+      "Image",
+      "image",
+      "Image URL",
+      "Image Link",
+      "Image link",
+      "Photo",
+      "photo",
+      "player image",
+    ];
     rows.forEach((row) => {
       const player = String(row.Player || row.player || "").trim();
       const team = String(row.Team || row.team || "").trim();
-      const image = String(
-        row.Image ||
-          row.image ||
-          row["Image URL"] ||
-          row["Image Link"] ||
-          row["Image link"] ||
-          row.Photo ||
-          row.photo ||
-          ""
-      ).trim();
-      if (player && team) map.set(player, { team, image: image || null });
+      const image = imageKeys
+        .map((key) => row[key])
+        .find((val) => val != null && String(val).trim() !== "");
+      const imageUrl = String(image || "").trim();
+      if (player && team) map.set(player, { team, image: imageUrl || null });
     });
     return map;
   }

@@ -420,7 +420,7 @@ body {
 
 .live-stats__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 10px;
 }
 
@@ -442,10 +442,10 @@ body {
 }
 
 .live-stat-card__values {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  align-items: center;
+  align-items: stretch;
 }
 
 .state {
@@ -624,7 +624,7 @@ body {
 
 .breakdown__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
 }
 
@@ -645,10 +645,10 @@ body {
 }
 
 .breakdown-card__values {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  align-items: center;
-  justify-content: space-between;
+  align-items: stretch;
 }
 
 .breakdown-card__note {
@@ -683,7 +683,9 @@ body {
   border-radius: 12px;
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.06);
-  min-width: 120px;
+  min-width: 0;
+  width: 100%;
+  justify-content: center;
 }
 
 .team-stat--left {
