@@ -5,7 +5,7 @@
   // 1) Publish your Google Sheet tab to the web as CSV.
   // Use the gviz CSV endpoint (works well with CORS):
   // https://docs.google.com/spreadsheets/d/<ID>/gviz/tq?tqx=out:csv&sheet=<TAB_NAME>
-  const DEFAULT_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv";
+  const SHEET_CSV_URL = "PASTE_YOUR_PUBLISHED_CSV_URL_HERE";
 
   // Canvas output size (matches your Python output)
   const FINAL_W = 1800;
@@ -23,19 +23,11 @@
   const SMOOTH_WIN = 13; // odd
   const SHOW_PREGAME_BASELINE = true;
 
-  // Optional query param overrides:
-  //   ?refresh=10 (seconds)
-  //   ?sheet=<CSV_URL> (Google Sheet published as CSV)
-  const urlParams = new URL(location.href).searchParams;
+  // Optional query param: ?refresh=10 (seconds)
   const REFRESH_SEC = (() => {
-    const v = Number(urlParams.get("refresh"));
-    if (Number.isFinite(v) && v >= 0) return v;
-    return 30; // default: refresh every 30s
-  })();
-  const SHEET_CSV_URL = (() => {
-    const override = urlParams.get("sheet");
-    if (override && override.startsWith("http")) return override;
-    return DEFAULT_SHEET_CSV_URL;
+    const u = new URL(location.href);
+    const v = Number(u.searchParams.get("refresh"));
+    return Number.isFinite(v) && v > 0 ? v : 0;
   })();
 
   /**********************
@@ -93,20 +85,6 @@
     },
   };
 
-  // Palette for teams without explicit branding (deterministic pick)
-  const AUTO_COLORS = [
-    rgb(236, 72, 153),   // pink
-    rgb(96, 165, 250),   // blue
-    rgb(34, 197, 94),    // green
-    rgb(250, 204, 21),   // yellow
-    rgb(249, 115, 22),   // orange
-    rgb(129, 140, 248),  // indigo
-    rgb(94, 234, 212),   // teal
-    rgb(168, 85, 247),   // purple
-    rgb(248, 113, 113),  // red
-    rgb(52, 211, 153),   // mint
-  ];
-
   // Accept common variants from your sheet and normalize to the required keys above.
   const TEAM_ALIASES = new Map([
     // SanFran
@@ -161,44 +139,14 @@
     return null;
   }
 
-  function slugifyTeam(raw) {
-    return String(raw || "")
-      .trim()
-      .toLowerCase()
-      .replace(/[^\w]+/g, "_")
-      .replace(/^_+|_+$/g, "") || null;
-  }
-
-  function pickAutoColor(key) {
-    let hash = 0;
-    for (let i = 0; i < key.length; i++) {
-      hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
-    }
-    return AUTO_COLORS[hash % AUTO_COLORS.length] || rgb(120, 120, 120);
-  }
-
-  function ensureTeamEntry(key, display) {
-    if (TEAM[key]) return TEAM[key];
-    const color = pickAutoColor(key);
-    const team = { key, display: display || key, logo: null, color };
-    TEAM[key] = team;
-    return team;
-  }
-
   /**********************
    * UI BOOTSTRAP
    **********************/
-  const app = document.getElementById("app") || document.body;
+  const app = document.getElementById("app");
   app.style.minHeight = "100vh";
   app.style.display = "grid";
   app.style.placeItems = "center";
   app.style.padding = "24px";
-
-  // Hide setup hint once a real sheet URL is provided
-  const hint = document.querySelector(".hint");
-  if (hint && SHEET_CSV_URL && !SHEET_CSV_URL.includes("PASTE_YOUR_PUBLISHED_CSV_URL_HERE")) {
-    hint.style.display = "none";
-  }
 
   const wrap = document.createElement("div");
   wrap.style.width = "min(96vw, 1800px)";
@@ -222,20 +170,6 @@
   canvas.style.borderRadius = "18px";
   canvas.style.boxShadow = "0 30px 80px rgba(0,0,0,0.45)";
   wrap.appendChild(canvas);
-
-  const pngPreview = document.createElement("img");
-  pngPreview.alt = "Latest sheet render (PNG)";
-  pngPreview.style.display = "block";
-  pngPreview.style.width = "100%";
-  pngPreview.style.height = "auto";
-  pngPreview.style.borderRadius = "12px";
-  pngPreview.style.border = "1px solid rgba(255,255,255,0.12)";
-  pngPreview.style.boxShadow = "0 10px 30px rgba(0,0,0,0.28)";
-  pngPreview.style.marginTop = "8px";
-  pngPreview.style.background = "rgba(255,255,255,0.02)";
-  pngPreview.style.objectFit = "contain";
-  pngPreview.loading = "lazy";
-  wrap.appendChild(pngPreview);
 
   const ctx = canvas.getContext("2d");
 
@@ -524,19 +458,15 @@
     // Determine teams from sheet (use last non-empty row info)
     const awayRaw = getFirstNonEmpty(records.slice().reverse(), H_AWAYTEAM);
     const homeRaw = getFirstNonEmpty(records.slice().reverse(), H_HOMETEAM);
-    if (!awayRaw || !homeRaw) {
-      throw new Error("Away/Home team names missing in sheet.");
+    const awayKey = normalizeTeamKey(awayRaw);
+    const homeKey = normalizeTeamKey(homeRaw);
+
+    if (!awayKey || !homeKey) {
+      throw new Error(
+        `Away/Home team keys not recognized. Got Away='${awayRaw}', Home='${homeRaw}'. ` +
+        `Must map to: SanFran, Bengals, Cowboys, Giants, Louis.`
+      );
     }
-
-    let awayKey = normalizeTeamKey(awayRaw);
-    let homeKey = normalizeTeamKey(homeRaw);
-
-    // Allow new teams by generating deterministic keys/colors
-    if (!awayKey) awayKey = slugifyTeam(awayRaw);
-    if (!homeKey) homeKey = slugifyTeam(homeRaw);
-
-    ensureTeamEntry(awayKey, awayRaw);
-    ensureTeamEntry(homeKey, homeRaw);
 
     // Score columns: prefer team-named columns (Giants, Bengals, etc.), else generic
     const awayScoreCol = TEAM[awayKey]?.key && hmap.get(TEAM[awayKey].key.toLowerCase()) ? TEAM[awayKey].key : null;
@@ -706,17 +636,17 @@
     fillRoundedRect(ctx, x0, y0, W, headerH, radius, gHeader);
 
     // Layout columns
-    const layoutPadX = 60;
+    const padX = 60;
     const leftW = Math.floor(W * 0.40);
     const rightW = Math.floor(W * 0.40);
     const centerW = W - leftW - rightW;
 
-    const L0 = x0 + layoutPadX;
+    const L0 = x0 + padX;
     const L1 = L0 + leftW;
     const C0 = L1;
     const C1 = C0 + centerW;
     const R0 = C1;
-    const R1 = x1 - layoutPadX;
+    const R1 = x1 - padX;
 
     const awayTeam = TEAM[awayKey];
     const homeTeam = TEAM[homeKey];
@@ -916,10 +846,10 @@
     const pillY = scoreY + sizes.gapScoreToTime;
     setFont(sizes.timePx, 800);
     const tw = textW(timeStr);
-    const pillPadX = Math.floor(26 * scale);
-    const pillPadY = Math.floor(13 * scale);
-    const pillW = tw + 2 * pillPadX;
-    const pillH = sizes.timePx + 2 * pillPadY;
+    const padX = Math.floor(26 * scale);
+    const padY = Math.floor(13 * scale);
+    const pillW = tw + 2 * padX;
+    const pillH = sizes.timePx + 2 * padY;
     const pillX = headerCx - pillW / 2;
     const pillR = pillH / 2;
 
@@ -933,7 +863,7 @@
 
     ctx.fillStyle = rgbaStr(THEME.TEXT);
     // baseline text y alignment
-    ctx.fillText(timeStr, pillX + pillPadX, pillY);
+    ctx.fillText(timeStr, pillX + padX, pillY);
 
     // Strip under pill
     if (strip) {
@@ -1284,27 +1214,16 @@
   /**********************
    * FETCH + LOOP
    **********************/
-  function buildCSVUrl() {
-    const bust = `_=${Date.now()}`;
-    return SHEET_CSV_URL.includes("?")
-      ? `${SHEET_CSV_URL}&${bust}`
-      : `${SHEET_CSV_URL}?${bust}`;
-  }
-
-  let isRefreshing = false;
-
   async function fetchCSV() {
-    const res = await fetch(buildCSVUrl(), { cache: "no-store" });
+    const res = await fetch(SHEET_CSV_URL, { cache: "no-store" });
     if (!res.ok) throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
     return await res.text();
   }
 
-  async function refreshOnce(reason = "manual") {
-    if (isRefreshing) return;
-    isRefreshing = true;
+  async function refreshOnce() {
     try {
       if (!SHEET_CSV_URL || SHEET_CSV_URL.includes("PASTE_YOUR_PUBLISHED_CSV_URL_HERE")) {
-        throw new Error("Credit: Tony Stark TFL Yahoo Sports");
+        throw new Error("Set SHEET_CSV_URL at the top of app.js to your published Google Sheet CSV URL.");
       }
 
       statusLine.textContent = "Fetching sheet…";
@@ -1317,12 +1236,9 @@
 
       statusLine.textContent =
         `Away=${awayKey} | Home=${homeKey} | snapshots=${snaps.length}` +
-        (REFRESH_SEC ? ` | auto-refresh=${REFRESH_SEC}s` : "") +
-        ` | last=${reason}` +
-        (SHEET_CSV_URL ? " | sheet set" : " | sheet missing");
+        (REFRESH_SEC ? ` | auto-refresh=${REFRESH_SEC}s` : "");
 
       await renderCard({ awayKey, homeKey, snaps, pregame });
-      pngPreview.src = canvas.toDataURL("image/png");
     } catch (e) {
       console.error(e);
       statusLine.textContent = `Error: ${e.message}`;
@@ -1336,8 +1252,6 @@
       ctx.font = "500 16px system-ui, -apple-system, Segoe UI, Roboto, Arial";
       ctx.fillStyle = "rgba(199,207,220,0.9)";
       wrapText(ctx, e.message, 60, 120, FINAL_W - 120, 22);
-    } finally {
-      isRefreshing = false;
     }
   }
 
@@ -1358,9 +1272,6 @@
   }
 
   // Start
-  refreshOnce("initial").finally(() => {
-    if (REFRESH_SEC > 0) {
-      setInterval(() => refreshOnce("auto"), REFRESH_SEC * 1000);
-    }
-  });
+  refreshOnce();
+  if (REFRESH_SEC) setInterval(refreshOnce, REFRESH_SEC * 1000);
 })();
