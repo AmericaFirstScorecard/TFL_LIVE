@@ -106,6 +106,9 @@
     logoExistCache: new Map(), // filename -> boolean
     lastScores: { a: null, b: null },
     deltaTimers: { a: null, b: null },
+    matchupAbortController: null,
+    mvpAbortController: null,
+    mvpVersion: 0,
   };
 
   const els = {};
@@ -417,7 +420,7 @@
   // =======================
   // NETWORK
   // =======================
-  async function fetchText(url) {
+  async function fetchText(url, signal) {
     const u = new URL(url, window.location.href);
     // cache buster (safe for Google publish links)
     u.searchParams.set("_cb", Date.now().toString());
@@ -428,6 +431,7 @@
       redirect: "follow",
       mode: "cors",
       headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+      signal,
     });
 
     if (!res.ok) {
@@ -446,7 +450,7 @@
     return text;
   }
 
-  async function fetchArrayBuffer(url) {
+  async function fetchArrayBuffer(url, signal) {
     const u = new URL(url, window.location.href);
     u.searchParams.set("_cb", Date.now().toString());
     const res = await fetch(u.toString(), {
@@ -454,6 +458,7 @@
       cache: "no-store",
       redirect: "follow",
       headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+      signal,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} for ${u.toString()}`);
     return res.arrayBuffer();
@@ -464,11 +469,14 @@
     toggleError(els.winError, false);
     const requestId = Date.now();
     state.matchupRequestInFlight = requestId;
+    if (state.matchupAbortController) state.matchupAbortController.abort();
+    const controller = new AbortController();
+    state.matchupAbortController = controller;
 
     const url = overrideUrl("matchup") || MATCHUP_CSV_URL;
 
     try {
-      const text = await fetchText(url);
+      const text = await fetchText(url, controller.signal);
       const parsed = parseMatchupCSV(text);
       if (!parsed.snapshots.length) throw new Error("No matchup rows parsed");
       if (requestId < state.matchupVersion) return;
@@ -480,11 +488,13 @@
         setLoading(els.winLoading, false);
         return;
       }
+      if (state.matchupAbortController === controller) state.matchupAbortController = null;
       state.lastMatchupFreshness = nextFreshness || state.lastMatchupFreshness;
       state.lastMatchup = parsed;
       renderMatchup(parsed);
       setLoading(els.winLoading, false);
     } catch (err) {
+      if (err?.name === "AbortError") return;
       console.error("[matchup]", err);
       showError(els.winError, `Matchup feed error: ${err.message}`);
       if (requestId >= state.matchupVersion) {
@@ -492,6 +502,7 @@
         state.lastMatchup = buildSampleMatchup();
         renderMatchup(state.lastMatchup); // keep app alive
       }
+      if (state.matchupAbortController === controller) state.matchupAbortController = null;
       setLoading(els.winLoading, false);
     }
   }
@@ -505,12 +516,19 @@
     toggleError(els.newsError, false);
     setLoading(els.bracketLoading, true);
     toggleError(els.bracketError, false);
+    const requestId = Date.now();
+    if (state.mvpAbortController) state.mvpAbortController.abort();
+    const controller = new AbortController();
+    state.mvpAbortController = controller;
 
     const url = overrideUrl("mvp") || MVP_CSV_URL;
 
     try {
-      const buffer = await fetchArrayBuffer(url);
+      const buffer = await fetchArrayBuffer(url, controller.signal);
+      if (requestId < state.mvpVersion) return;
       const { mvpRecords, standings, news, roster } = parseMvpWorkbook(buffer);
+      state.mvpVersion = requestId;
+      if (state.mvpAbortController === controller) state.mvpAbortController = null;
       state.lastMvpRecords = mvpRecords;
       state.lastStandings = standings;
       state.rosterMap = roster;
@@ -527,25 +545,30 @@
       setLoading(els.newsLoading, false);
       setLoading(els.bracketLoading, false);
     } catch (err) {
+      if (err?.name === "AbortError") return;
       console.error("[mvp]", err);
-      showError(els.mvpError, `MVP feed error: ${err.message}`);
-      state.lastMvpRecords = buildSampleMvp();
-      state.lastStandings = buildSampleStandings();
-      state.rosterMap = new Map();
-      state.playersByTeam = buildPlayersByTeam(state.lastMvpRecords);
-      state.standingsLookup = buildStandingsLookup(state.lastStandings);
-      renderMvp(state.lastMvpRecords);
-      renderStandings(state.lastStandings);
-      renderBracket(state.lastStandings);
-      state.newsRecords = buildSampleNews();
-      renderNews(state.newsRecords);
-      if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
-      setLoading(els.mvpLoading, false);
-      setLoading(els.standingsLoading, false);
-      setLoading(els.newsLoading, false);
-      setLoading(els.bracketLoading, false);
-      showError(els.newsError, `News feed error: ${err.message}`);
-      showError(els.bracketError, `Bracket error: ${err.message}`);
+      if (requestId >= state.mvpVersion) {
+        state.mvpVersion = requestId;
+        if (state.mvpAbortController === controller) state.mvpAbortController = null;
+        showError(els.mvpError, `MVP feed error: ${err.message}`);
+        state.lastMvpRecords = buildSampleMvp();
+        state.lastStandings = buildSampleStandings();
+        state.rosterMap = new Map();
+        state.playersByTeam = buildPlayersByTeam(state.lastMvpRecords);
+        state.standingsLookup = buildStandingsLookup(state.lastStandings);
+        renderMvp(state.lastMvpRecords);
+        renderStandings(state.lastStandings);
+        renderBracket(state.lastStandings);
+        state.newsRecords = buildSampleNews();
+        renderNews(state.newsRecords);
+        if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
+        setLoading(els.mvpLoading, false);
+        setLoading(els.standingsLoading, false);
+        setLoading(els.newsLoading, false);
+        setLoading(els.bracketLoading, false);
+        showError(els.newsError, `News feed error: ${err.message}`);
+        showError(els.bracketError, `Bracket error: ${err.message}`);
+      }
     }
   }
 
