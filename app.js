@@ -1973,6 +1973,18 @@
   function isFreshSnapshot(next, prev) {
     if (!next) return true;
     if (!prev) return true;
+
+    // Allow hard resets (new game, sheet cleared, or scores rewound).
+    // In those cases the update counter can jump backwards, so treat them as fresh.
+    const resetDetected =
+      (Number.isFinite(next.scoreSum) &&
+        Number.isFinite(prev.scoreSum) &&
+        next.scoreSum < prev.scoreSum) ||
+      (Number.isFinite(next.minuteLeft) &&
+        Number.isFinite(prev.minuteLeft) &&
+        next.minuteLeft > prev.minuteLeft + 1);
+    if (resetDetected) return true;
+
     if (next.updateIndex > prev.updateIndex) return true;
     if (next.updateIndex < prev.updateIndex) return false;
 
