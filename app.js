@@ -1,148 +1,190 @@
+/* app.js - TFL Live Monitor
+   Requires:
+   - d3 v7 (csvParse)
+   - chart.js v4 (Chart global)
+*/
+
 (() => {
-  const MATCHUP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv';
-  const MVP_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQp0jxVIwA59hH031QxJFBsXdQVIi7fNdPS5Ra2w1lK2UYA08rC0moSSqoKPSFL8BRZFh_hC4cO8ymk/pub?output=csv';
+  // ✅ Put your real published CSV URLs here:
+  // Matchup (your sheet with: Update #, Minutes Left, Team A, Team B, Team A Win Probability, Team A has Ball..., Quarter, Down, Distance, Yards to Goal, Team A Point, Team B Point)
+  const MATCHUP_CSV_URL =
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv";
+
+  // MVP (your odds output sheet)
+  const MVP_CSV_URL =
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQp0jxVIwA59hH031QxJFBsXdQVIi7fNdPS5Ra2w1lK2UYA08rC0moSSqoKPSFL8BRZFh_hC4cO8ymk/pub?output=csv";
+
   const POLL_MS = 30_000;
+
   const MIN_DISPLAY_PROB = 0.01;
   const MAX_DISPLAY_PROB = 0.99;
+
   const SMOOTH_WINDOW = 5;
   const MOMENTUM_THRESHOLD = 0.025;
   const BIG_SWING_THRESHOLD = 0.12;
 
   const LOGO_MAP = {
-  cards: 'Cards.png',
-  cardinals: 'Cards.png',
-  'arizona cardinals': 'Cards.png',
-  lou: 'Cards.png',
-  louis: 'Cards.png',
+    cards: "Cards.png",
+    cardinals: "Cards.png",
+    "arizona cardinals": "Cards.png",
+    lou: "Cards.png",
+    louis: "Cards.png",
 
-  bengals: 'bengals.png',
-  'cincinnati bengals': 'bengals.png',
+    bengals: "bengals.png",
+    "cincinnati bengals": "bengals.png",
 
-  '49ers': 'Sanfran.png',
-  'sanfran': 'Sanfran.png',
-  'san fran': 'Sanfran.png',
-  'san francisco': 'Sanfran.png',
-  'san francisco 49ers': 'Sanfran.png',
-  sf: 'Sanfran.png',
+    "49ers": "Sanfran.png",
+    sanfran: "Sanfran.png",
+    "san fran": "Sanfran.png",
+    "san francisco": "Sanfran.png",
+    "san francisco 49ers": "Sanfran.png",
+    sf: "Sanfran.png",
 
-  cowboys: 'cowboys.png',
-  'dallas cowboys': 'cowboys.png',
+    cowboys: "cowboys.png",
+    "dallas cowboys": "cowboys.png",
 
-  giants: 'giants.png',
-  'new york giants': 'giants.png',
-};
-
+    giants: "giants.png",
+    "new york giants": "giants.png",
+  };
 
   const state = {
     chart: null,
     baseline: null,
     matchupLoading: true,
-    matchupError: false,
     mvpLoading: true,
-    mvpError: false,
-    sort: { key: 'mvpScore', dir: 'desc' },
+    sort: { key: "mvpScore", dir: "desc" },
+    lastMvpRecords: [],
+    sortHandlersAttached: false,
   };
 
   const els = {};
 
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener("DOMContentLoaded", () => {
+    if (typeof d3 === "undefined") {
+      console.error("d3 is not loaded. Make sure d3 script is included before app.js");
+      return;
+    }
+    if (typeof Chart === "undefined") {
+      console.error("Chart.js is not loaded. Make sure chart.js script is included before app.js");
+      return;
+    }
+
     cacheEls();
     initTabs();
     initChart();
+
+    // Log so you can VERIFY which URLs are actually running in the browser
+    console.info("[TFL] MATCHUP_CSV_URL:", MATCHUP_CSV_URL);
+    console.info("[TFL] MVP_CSV_URL:", MVP_CSV_URL);
+
     fetchMatchup();
     fetchMvp();
+
     setInterval(fetchMatchup, POLL_MS);
     setInterval(fetchMvp, POLL_MS);
   });
 
   function cacheEls() {
-    els.gameStatus = document.getElementById('gameStatus');
-    els.pillRow = document.getElementById('pillRow');
-    els.pregameTag = document.getElementById('pregameTag');
-    els.teamAName = document.getElementById('teamAName');
-    els.teamBName = document.getElementById('teamBName');
-    els.teamALogo = document.getElementById('teamALogo');
-    els.teamBLogo = document.getElementById('teamBLogo');
-    els.teamARecord = document.getElementById('teamARecord');
-    els.teamBRecord = document.getElementById('teamBRecord');
-    els.teamAScore = document.getElementById('teamAScore');
-    els.teamBScore = document.getElementById('teamBScore');
-    els.possession = document.getElementById('possession');
-    els.quarter = document.getElementById('quarter');
-    els.clock = document.getElementById('clock');
-    els.downDistance = document.getElementById('downDistance');
-    els.ytg = document.getElementById('ytg');
-    els.lastUpdate = document.getElementById('lastUpdate');
-    els.teamListChip = document.getElementById('teamListChip');
-    els.momentumValue = document.getElementById('momentumValue');
-    els.swingValue = document.getElementById('swingValue');
-    els.clutchValue = document.getElementById('clutchValue');
-    els.baselineValue = document.getElementById('baselineValue');
-    els.winLoading = document.getElementById('winLoading');
-    els.winError = document.getElementById('winError');
-    els.mvpLoading = document.getElementById('mvpLoading');
-    els.mvpError = document.getElementById('mvpError');
-    els.mvpEmpty = document.getElementById('mvpEmpty');
-    els.mvpTableBody = document.getElementById('mvpTableBody');
-    els.mvpStatus = document.getElementById('mvpStatus');
+    const id = (x) => document.getElementById(x);
+
+    els.gameStatus = id("gameStatus");
+    els.pillRow = id("pillRow");
+    els.pregameTag = id("pregameTag");
+
+    els.teamAName = id("teamAName");
+    els.teamBName = id("teamBName");
+    els.teamALogo = id("teamALogo");
+    els.teamBLogo = id("teamBLogo");
+
+    els.teamARecord = id("teamARecord");
+    els.teamBRecord = id("teamBRecord");
+
+    els.teamAScore = id("teamAScore");
+    els.teamBScore = id("teamBScore");
+
+    els.possession = id("possession");
+    els.quarter = id("quarter");
+    els.clock = id("clock");
+    els.downDistance = id("downDistance");
+    els.ytg = id("ytg");
+    els.lastUpdate = id("lastUpdate");
+
+    els.teamListChip = id("teamListChip");
+
+    els.momentumValue = id("momentumValue");
+    els.swingValue = id("swingValue");
+    els.clutchValue = id("clutchValue");
+    els.baselineValue = id("baselineValue");
+
+    els.winLoading = id("winLoading");
+    els.winError = id("winError");
+
+    els.mvpLoading = id("mvpLoading");
+    els.mvpError = id("mvpError");
+    els.mvpEmpty = id("mvpEmpty");
+    els.mvpTableBody = id("mvpTableBody");
+    els.mvpStatus = id("mvpStatus");
   }
 
   function initTabs() {
-    const navItems = Array.from(document.querySelectorAll('.nav__item'));
+    const navItems = Array.from(document.querySelectorAll(".nav__item"));
     const tabs = {
-      win: document.getElementById('tab-win'),
-      mvp: document.getElementById('tab-mvp'),
+      win: document.getElementById("tab-win"),
+      mvp: document.getElementById("tab-mvp"),
     };
 
     function setTab(tab) {
-      Object.values(tabs).forEach((el) => el.classList.remove('tab--active'));
-      navItems.forEach((el) => el.classList.remove('nav__item--active'));
-      const key = tab === 'mvp' ? 'mvp' : 'win';
-      tabs[key].classList.add('tab--active');
-      navItems
-        .find((el) => el.dataset.tab === key)
-        ?.classList.add('nav__item--active');
+      Object.values(tabs).forEach((el) => el && el.classList.remove("tab--active"));
+      navItems.forEach((el) => el.classList.remove("nav__item--active"));
+      const key = tab === "mvp" ? "mvp" : "win";
+      tabs[key]?.classList.add("tab--active");
+      navItems.find((el) => el.dataset.tab === key)?.classList.add("nav__item--active");
       window.location.hash = `#${key}`;
     }
 
     navItems.forEach((el) =>
-      el.addEventListener('click', (e) => {
+      el.addEventListener("click", (e) => {
         e.preventDefault();
         setTab(el.dataset.tab);
       })
     );
 
-    window.addEventListener('hashchange', () => {
-      const tab = window.location.hash.replace('#', '') || 'win';
+    window.addEventListener("hashchange", () => {
+      const tab = window.location.hash.replace("#", "") || "win";
       setTab(tab);
     });
 
-    const initial = window.location.hash.replace('#', '') || 'win';
-    setTab(initial);
+    setTab(window.location.hash.replace("#", "") || "win");
   }
 
   function initChart() {
-    const ctx = document.getElementById('winProbChart');
-    const gradientA = ctx.getContext('2d').createLinearGradient(0, 0, 0, 320);
-    gradientA.addColorStop(0, 'rgba(96,165,250,0.4)');
-    gradientA.addColorStop(1, 'rgba(96,165,250,0.05)');
+    const canvas = document.getElementById("winProbChart");
+    if (!canvas) return;
 
-    const gradientB = ctx.getContext('2d').createLinearGradient(0, 0, 0, 320);
-    gradientB.addColorStop(0, 'rgba(168,85,247,0.4)');
-    gradientB.addColorStop(1, 'rgba(168,85,247,0.05)');
+    const ctx2d = canvas.getContext("2d");
+
+    const gradientA = ctx2d.createLinearGradient(0, 0, 0, 320);
+    gradientA.addColorStop(0, "rgba(96,165,250,0.4)");
+    gradientA.addColorStop(1, "rgba(96,165,250,0.05)");
+
+    const gradientB = ctx2d.createLinearGradient(0, 0, 0, 320);
+    gradientB.addColorStop(0, "rgba(168,85,247,0.4)");
+    gradientB.addColorStop(1, "rgba(168,85,247,0.05)");
 
     const baselinePlugin = {
-      id: 'baselineMarker',
+      id: "baselineMarker",
       afterDatasetsDraw(chart) {
         if (state.baseline == null) return;
         const {
           ctx,
-          chartArea: { left, right, width },
+          chartArea: { left, right },
           scales: { y },
         } = chart;
+
         ctx.save();
-        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.strokeStyle = "rgba(255,255,255,0.25)";
         ctx.setLineDash([6, 4]);
+
         const yPos = y.getPixelForValue(state.baseline * 100);
         ctx.beginPath();
         ctx.moveTo(left, yPos);
@@ -155,41 +197,43 @@
         ctx.save();
         chart.data.datasets.forEach((ds, i) => {
           const meta = chart.getDatasetMeta(i);
-          const last = meta.data[meta.data.length - 1];
+          const last = meta?.data?.[meta.data.length - 1];
           if (!last) return;
           ctx.fillStyle = ds.borderColor;
           ctx.beginPath();
           ctx.arc(last.x, last.y, 5, 0, Math.PI * 2);
           ctx.fill();
           ctx.lineWidth = 2;
-          ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+          ctx.strokeStyle = "rgba(0,0,0,0.6)";
           ctx.stroke();
         });
         ctx.restore();
       },
     };
 
-    state.chart = new Chart(ctx, {
-      type: 'line',
+    state.chart = new Chart(canvas, {
+      type: "line",
       data: {
         labels: [],
         datasets: [
           {
-            label: 'Team A',
+            label: "Team A",
             data: [],
             tension: 0.35,
             fill: true,
-            borderColor: 'rgba(96,165,250,1)',
+            spanGaps: true,
+            borderColor: "rgba(96,165,250,1)",
             backgroundColor: gradientA,
             pointRadius: 0,
             borderWidth: 3,
           },
           {
-            label: 'Team B',
+            label: "Team B",
             data: [],
             tension: 0.35,
             fill: true,
-            borderColor: 'rgba(168,85,247,1)',
+            spanGaps: true,
+            borderColor: "rgba(168,85,247,1)",
             backgroundColor: gradientB,
             pointRadius: 0,
             borderWidth: 3,
@@ -201,9 +245,7 @@
         animation: false,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            labels: { color: '#e5e7eb' },
-          },
+          legend: { labels: { color: "#e5e7eb" } },
           tooltip: {
             callbacks: {
               label(ctx) {
@@ -214,14 +256,14 @@
         },
         scales: {
           x: {
-            ticks: { color: '#9ca3af', maxRotation: 0 },
-            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { color: "#9ca3af", maxRotation: 0 },
+            grid: { color: "rgba(255,255,255,0.05)" },
           },
           y: {
             min: 0,
             max: 100,
-            ticks: { color: '#9ca3af', callback: (val) => `${val}%` },
-            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { color: "#9ca3af", callback: (val) => `${val}%` },
+            grid: { color: "rgba(255,255,255,0.05)" },
           },
         },
       },
@@ -229,326 +271,307 @@
     });
   }
 
+  async function fetchText(url) {
+    // cache buster to prevent stale CSV/script caching
+    const u = new URL(url, window.location.href);
+    u.searchParams.set("_cb", Date.now().toString());
+
+    const res = await fetch(u.toString(), { cache: "no-store" });
+    if (!res.ok) {
+      // Show better diagnostics than just "Failed"
+      throw new Error(`HTTP ${res.status} ${res.statusText} for ${u.toString()}`);
+    }
+    const text = await res.text();
+
+    // Google sometimes returns an HTML "access denied" or "not published" page
+    if (/<html/i.test(text)) {
+      throw new Error(`Got HTML instead of CSV for ${u.toString()} (sheet may not be published/public)`);
+    }
+
+    return text;
+  }
+
   async function fetchMatchup() {
     setLoading(els.winLoading, true);
     toggleError(els.winError, false);
-    const url = overrideUrl('matchup') || MATCHUP_CSV_URL;
+
+    const url = overrideUrl("matchup") || MATCHUP_CSV_URL;
+
     try {
-      const res = await fetch(url, { cache: 'no-cache' });
-      if (!res.ok) throw new Error('Failed to load matchup CSV');
-      const text = await res.text();
+      const text = await fetchText(url);
       const parsed = parseMatchupCSV(text);
-      if (!parsed.snapshots.length) throw new Error('No matchup rows');
+      if (!parsed.snapshots.length) throw new Error("No matchup rows parsed");
       renderMatchup(parsed);
       state.matchupLoading = false;
       setLoading(els.winLoading, false);
     } catch (err) {
-      console.error(err);
+      console.error("[matchup] ", err);
       toggleError(els.winError, true);
-      if (state.matchupLoading) {
-        const fallback = buildSampleMatchup();
-        renderMatchup(fallback);
-        state.matchupLoading = false;
-      }
+
+      // Always show something so the app doesn't look dead
+      const fallback = buildSampleMatchup();
+      renderMatchup(fallback);
+      state.matchupLoading = false;
+      setLoading(els.winLoading, false);
     }
   }
 
   async function fetchMvp() {
     setLoading(els.mvpLoading, true);
     toggleError(els.mvpError, false);
-    const url = overrideUrl('mvp') || MVP_CSV_URL;
+
+    const url = overrideUrl("mvp") || MVP_CSV_URL;
+
     try {
-      const res = await fetch(url, { cache: 'no-cache' });
-      if (!res.ok) throw new Error('Failed to load MVP CSV');
-      const text = await res.text();
+      const text = await fetchText(url);
       const records = parseMvpCSV(text);
+      state.lastMvpRecords = records;
       renderMvp(records);
       setLoading(els.mvpLoading, false);
-      state.mvpError = false;
       state.mvpLoading = false;
     } catch (err) {
-      console.error(err);
+      console.error("[mvp] ", err);
       toggleError(els.mvpError, true);
-      if (!state.mvpLoading) return;
+
       const fallback = buildSampleMvp();
+      state.lastMvpRecords = fallback;
       renderMvp(fallback);
       state.mvpLoading = false;
+      setLoading(els.mvpLoading, false);
     }
   }
 
+  // Matchup parser designed around your sheet headers
   function parseMatchupCSV(text) {
-  // If Google gives you an HTML page instead of CSV, this will catch it early.
-  if (/<html/i.test(text)) {
-    return { snapshots: [], teamA: 'Team A', teamB: 'Team B', teams: [], baseline: null };
-  }
-
-  const data = d3.csvParse(text);
-  if (!data || !data.length) {
-    return { snapshots: [], teamA: 'Team A', teamB: 'Team B', teams: [], baseline: null };
-  }
-
-  const colsLower = (data.columns || []).map((c) => String(c).trim().toLowerCase());
-
-  const pick = (row, keys) => {
-    for (const k of keys) {
-      if (row[k] != null && String(row[k]).trim() !== '') return row[k];
+    const rows = d3.csvParse(text);
+    if (!rows || !rows.length) {
+      return { snapshots: [], teamA: "Team A", teamB: "Team B", teams: [], baseline: null };
     }
-    return null;
-  };
 
-  const normalizeRow = (row) => {
-    const out = {};
-    for (const [k, v] of Object.entries(row)) out[String(k).trim().toLowerCase()] = v;
-    return out;
-  };
-
-  const parseMinutesLeft = (val) => {
-    if (val == null) return null;
-    const s = String(val).trim();
-    // mm:ss
-    const m = s.match(/^(\d+):(\d{2})$/);
-    if (m) return parseInt(m[1], 10) + parseInt(m[2], 10) / 60;
-    // number
-    return parseNumber(s);
-  };
-
-  const parseProbRaw = (val) => {
-    const n = parseNumber(val);
-    if (n == null) return null;
-    const p = n > 1 ? n / 100 : n;
-    return clampProb(p);
-  };
-
-  // Prefer Away/Home naming if present, else Team A/Team B.
-  const TEAM_A_KEYS = ['away', 'team a', 'teama'];
-  const TEAM_B_KEYS = ['home', 'team b', 'teamb'];
-
-  const PROB_A_KEYS = [
-    'team a win probability',
-    'away win probability',
-    'team a win prob',
-    'away win prob',
-    'team a wp',
-    'away wp',
-    'team a win %',
-    'away win %',
-  ];
-
-  const PROB_B_KEYS = [
-    'team b win probability',
-    'home win probability',
-    'team b win prob',
-    'home win prob',
-    'team b wp',
-    'home wp',
-    'team b win %',
-    'home win %',
-  ];
-
-  const UPDATE_KEYS = ['update #', 'update', 'u'];
-  const MINUTES_KEYS = ['minutes left', 'minutes_left', 'mins left', 'ml'];
-
-  const SCORE_A_KEYS = ['team a point', 'team a points', 'away points', 'score a', 'away score'];
-  const SCORE_B_KEYS = ['team b point', 'team b points', 'home points', 'score b', 'home score'];
-
-  const HAS_BALL_KEYS = ['team a has ball (1=yes, 0=no)', 'team a has ball', 'has ball', 'possession a'];
-  const QUARTER_KEYS = ['quarter', 'qtr'];
-  const DOWN_KEYS = ['down'];
-  const DISTANCE_KEYS = ['distance', 'dist'];
-  const YTG_KEYS = ['yards to goal', 'ytg', 'to-go', 'to go'];
-
-  const PREGAME_KEYS = ['pregame', 'baseline', 'pregame baseline'];
-
-  // Use last row as the “current teams”
-  const lastRow = normalizeRow(data[data.length - 1]);
-  const teamA = (pick(lastRow, TEAM_A_KEYS) || 'Team A').toString().trim();
-  const teamB = (pick(lastRow, TEAM_B_KEYS) || 'Team B').toString().trim();
-
-  const snapshots = data.map((row, i) => {
-    const r = normalizeRow(row);
-
-    const update = (pick(r, UPDATE_KEYS) || `U${i + 1}`).toString().trim();
-    const minuteLeft = parseMinutesLeft(pick(r, MINUTES_KEYS));
-
-    const probA = parseProbRaw(pick(r, PROB_A_KEYS));
-    const probB = parseProbRaw(pick(r, PROB_B_KEYS));
-
-    // If only Team A prob exists, derive Team B; if only Team B exists, derive Team A.
-    const winProbAway = probA != null ? probA : probB != null ? clampProb(1 - probB) : null;
-    const winProbHome = probB != null ? probB : winProbAway != null ? clampProb(1 - winProbAway) : null;
-
-    const scoreA = parseNumber(pick(r, SCORE_A_KEYS)) ?? 0;
-    const scoreB = parseNumber(pick(r, SCORE_B_KEYS)) ?? 0;
-
-    // possession from 1/0 column if present
-    const hasBall = parseNumber(pick(r, HAS_BALL_KEYS));
-    const possession =
-      hasBall == null ? '' : hasBall === 1 ? teamA : teamB;
-
-    const quarter = (pick(r, QUARTER_KEYS) || '').toString().trim();
-    const down = (pick(r, DOWN_KEYS) || '').toString().trim();
-    const distance = (pick(r, DISTANCE_KEYS) || '').toString().trim();
-    const ytg = (pick(r, YTG_KEYS) || '').toString().trim();
-
-    const pregameRaw = pick(r, PREGAME_KEYS);
-    const pregame = parseProbRaw(pregameRaw);
-
-    return {
-      update,
-      minuteLeft,
-      winProbHome,
-      winProbAway,
-      scoreA,
-      scoreB,
-      possession,
-      quarter,
-      down,
-      distance,
-      ytg,
-      pregame,
+    const normRow = (row) => {
+      const out = {};
+      for (const [k, v] of Object.entries(row)) out[String(k).trim().toLowerCase()] = v;
+      return out;
     };
-  });
 
-  const teams = Array.from(new Set([teamA, teamB].filter(Boolean)));
+    const pick = (r, keys) => {
+      for (const k of keys) {
+        const v = r[k];
+        if (v != null && String(v).trim() !== "") return v;
+      }
+      return null;
+    };
 
-  // Baseline: if "pregame" exists, use it. If it likely represents Team A, convert to Team B to match your `home` series.
-  const pregameColExists = colsLower.some((c) => c.includes('pregame') || c.includes('baseline'));
-  const pregameSample = snapshots.find((s) => s.pregame != null)?.pregame ?? null;
+    const parseMinutesLeft = (val) => {
+      if (val == null) return null;
+      const s = String(val).trim();
+      const m = s.match(/^(\d+):(\d{2})$/);
+      if (m) return parseInt(m[1], 10) + parseInt(m[2], 10) / 60;
+      return parseNumber(s);
+    };
 
-  // Heuristic: if your sheet only provides "Team A Win Probability", then pregame is probably for Team A.
-  const onlyTeamAProb =
-    colsLower.some((c) => PROB_A_KEYS.some((k) => c.includes(k.replaceAll(' ', '')) || c.includes(k))) &&
-    !colsLower.some((c) => PROB_B_KEYS.some((k) => c.includes(k.replaceAll(' ', '')) || c.includes(k)));
+    const parseProb = (val) => {
+      const n = parseNumber(val);
+      if (n == null) return null;
+      const p = n > 1 ? n / 100 : n;
+      return clampProb(p);
+    };
 
-  let baseline = null;
-  if (pregameColExists && pregameSample != null) {
-    baseline = onlyTeamAProb ? clampProb(1 - pregameSample) : pregameSample;
-  } else {
-    baseline = snapshots[0]?.winProbHome ?? null;
+    const last = normRow(rows[rows.length - 1]);
+
+    const teamA = String(pick(last, ["away", "team a"]) || "Team A").trim();
+    const teamB = String(pick(last, ["home", "team b"]) || "Team B").trim();
+
+    const snapshots = rows.map((row, i) => {
+      const r = normRow(row);
+
+      const update = String(pick(r, ["update #", "update"]) || `U${i + 1}`).trim();
+      const minuteLeft = parseMinutesLeft(pick(r, ["minutes left", "minutes_left", "ml"]));
+
+      // Your sheet: "Team A Win Probability"
+      const probA = parseProb(
+        pick(r, ["team a win probability", "away win probability", "team a win prob", "away wp"])
+      );
+      const probB = probA != null ? clampProb(1 - probA) : null;
+
+      const hasBall = parseNumber(pick(r, ["team a has ball (1=yes, 0=no)", "team a has ball"]));
+      const possession = hasBall == null ? "" : hasBall === 1 ? teamA : teamB;
+
+      const quarter = String(pick(r, ["quarter", "qtr"]) || "").trim();
+      const down = String(pick(r, ["down"]) || "").trim();
+      const distance = String(pick(r, ["distance", "dist"]) || "").trim();
+      const ytg = String(pick(r, ["yards to goal", "ytg", "to-go", "to go"]) || "").trim();
+
+      const scoreA = parseNumber(pick(r, ["team a point", "team a points", "away point", "away points"])) ?? 0;
+      const scoreB = parseNumber(pick(r, ["team b point", "team b points", "home point", "home points"])) ?? 0;
+
+      // Optional baseline/pregame
+      const pregame = parseProb(pick(r, ["pregame", "baseline", "pregame baseline"]));
+
+      return {
+        update,
+        minuteLeft,
+        // In your UI code, "homeSeries" is based on winProbHome
+        winProbAway: probA,
+        winProbHome: probB,
+        scoreA,
+        scoreB,
+        possession,
+        quarter,
+        down,
+        distance,
+        ytg,
+        pregame,
+      };
+    });
+
+    const baseline = snapshots.find((s) => s.pregame != null)?.pregame ?? snapshots[0]?.winProbHome ?? null;
+    const teams = Array.from(new Set([teamA, teamB].filter(Boolean)));
+
+    return { snapshots, teamA, teamB, teams, baseline };
   }
-
-  return { snapshots, teamA, teamB, teams, baseline };
-}
 
   function renderMatchup({ snapshots, teamA, teamB, teams, baseline }) {
-    const labels = snapshots.map((s) => s.minuteLeft ?? s.update);
+    if (!snapshots.length) return;
+
+    const labels = snapshots.map((s) => (s.minuteLeft ?? s.update));
     const home = smoothSeries(snapshots.map((s) => toPct(s.winProbHome)));
-    const away = smoothSeries(
-      snapshots.map((s) =>
-        s.winProbAway != null ? toPct(s.winProbAway) : s.winProbHome != null ? 100 - toPct(s.winProbHome) : null
-      )
-    );
+    const away = smoothSeries(snapshots.map((s) => toPct(s.winProbAway)));
 
     state.baseline = baseline != null ? baseline : null;
-    els.baselineValue.textContent = baseline != null ? `${(baseline * 100).toFixed(1)}%` : '—';
-    els.pregameTag.textContent =
-      baseline != null ? `Pregame baseline: ${(baseline * 100).toFixed(1)}%` : 'Pregame baseline: —';
+    if (els.baselineValue) els.baselineValue.textContent = baseline != null ? `${(baseline * 100).toFixed(1)}%` : "—";
+    if (els.pregameTag) els.pregameTag.textContent = baseline != null ? `Pregame baseline: ${(baseline * 100).toFixed(1)}%` : "Pregame baseline: —";
 
     updateChart(labels, home, away, teamA, teamB);
 
     const latest = snapshots[snapshots.length - 1];
-    els.gameStatus.textContent = latest.minuteLeft != null && latest.minuteLeft <= 0 ? 'Final' : 'Live';
-    els.gameStatus.classList.toggle('badge--ghost', latest.minuteLeft != null && latest.minuteLeft <= 0);
-    els.teamAName.textContent = teamA;
-    els.teamBName.textContent = teamB;
-    els.teamAScore.textContent = latest.scoreA ?? '0';
-    els.teamBScore.textContent = latest.scoreB ?? '0';
-    els.possession.textContent = latest.possession ? `Possession: ${latest.possession}` : 'Possession —';
-    els.quarter.textContent = latest.quarter ? `Q${latest.quarter}` : 'Q-';
-    els.clock.textContent = latest.minuteLeft != null ? `${latest.minuteLeft} ML` : 'ML —';
-    els.downDistance.textContent = latest.down ? `Down: ${latest.down}` : 'Down —';
-    els.ytg.textContent = latest.ytg || latest.distance ? `${latest.ytg || latest.distance} YTG` : 'YTG —';
-    els.teamListChip.textContent = teams.length ? `Teams: ${teams.join(', ')}` : 'Teams: —';
-    els.lastUpdate.textContent = `Last update: ${latest.update}`;
+
+    if (els.gameStatus) {
+      const isFinal = latest.minuteLeft != null && latest.minuteLeft <= 0;
+      els.gameStatus.textContent = isFinal ? "Final" : "Live";
+      els.gameStatus.classList.toggle("badge--ghost", isFinal);
+    }
+
+    if (els.teamAName) els.teamAName.textContent = teamA;
+    if (els.teamBName) els.teamBName.textContent = teamB;
+
+    if (els.teamAScore) els.teamAScore.textContent = String(latest.scoreA ?? 0);
+    if (els.teamBScore) els.teamBScore.textContent = String(latest.scoreB ?? 0);
+
+    if (els.possession) els.possession.textContent = latest.possession ? `Possession: ${latest.possession}` : "Possession —";
+    if (els.quarter) els.quarter.textContent = latest.quarter ? `Q${latest.quarter}` : "Q-";
+    if (els.clock) els.clock.textContent = latest.minuteLeft != null ? `${latest.minuteLeft} ML` : "ML —";
+
+    if (els.downDistance) els.downDistance.textContent = latest.down ? `Down: ${latest.down}` : "Down —";
+    if (els.ytg) els.ytg.textContent = latest.ytg || latest.distance ? `${latest.ytg || latest.distance} YTG` : "YTG —";
+
+    if (els.teamListChip) els.teamListChip.textContent = teams.length ? `Teams: ${teams.join(", ")}` : "Teams: —";
+    if (els.lastUpdate) els.lastUpdate.textContent = `Last update: ${latest.update}`;
 
     setLogo(els.teamALogo, teamA);
     setLogo(els.teamBLogo, teamB);
 
     const metrics = analyzeGame(home, labels, baseline);
-    els.momentumValue.textContent = metrics.momentum;
-    els.swingValue.textContent = metrics.bigSwing;
-    els.clutchValue.textContent = metrics.clutch;
+    if (els.momentumValue) els.momentumValue.textContent = metrics.momentum;
+    if (els.swingValue) els.swingValue.textContent = metrics.bigSwing;
+    if (els.clutchValue) els.clutchValue.textContent = metrics.clutch;
 
     renderPills(metrics, baseline);
+
     setLoading(els.winLoading, false);
     toggleError(els.winError, false);
-    state.matchupLoading = false;
   }
 
   function updateChart(labels, home, away, teamA, teamB) {
     if (!state.chart) return;
     state.chart.data.labels = labels;
+
+    // dataset[0] shows away, dataset[1] shows home (matches your earlier layout)
     state.chart.data.datasets[0].label = teamA;
     state.chart.data.datasets[1].label = teamB;
-    state.chart.data.datasets[0].data = away;
-    state.chart.data.datasets[1].data = home;
-    state.chart.update('none');
+
+    state.chart.data.datasets[0].data = away.map(forceNumberOrNull);
+    state.chart.data.datasets[1].data = home.map(forceNumberOrNull);
+
+    state.chart.update("none");
   }
 
   function analyzeGame(homeSeries, labels, baseline) {
-    const filtered = homeSeries.filter((v) => v != null);
+    const filtered = homeSeries.filter((v) => v != null && !Number.isNaN(v));
     const recent = filtered.slice(-3);
     const delta = recent.length >= 2 ? recent[recent.length - 1] - recent[0] : 0;
+
     const momentum =
-      Math.abs(delta) >= MOMENTUM_THRESHOLD * 100 ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} pts` : 'Stable';
+      Math.abs(delta) >= MOMENTUM_THRESHOLD * 100 ? `${delta >= 0 ? "+" : ""}${delta.toFixed(1)} pts` : "Stable";
+
     const bigSwing = computeBigSwing(filtered);
     const clutch = computeClutch(filtered, labels);
+
     renderBaselinePill(baseline);
+
     return { momentum, bigSwing, clutch };
   }
 
   function computeBigSwing(series) {
     let swing = 0;
     for (let i = 1; i < series.length; i++) {
-      if (series[i] == null || series[i - 1] == null) continue;
-      const delta = series[i] - series[i - 1];
-      swing = Math.max(Math.abs(delta), swing);
+      const a = series[i - 1];
+      const b = series[i];
+      if (a == null || b == null) continue;
+      swing = Math.max(swing, Math.abs(b - a));
     }
-    return swing >= BIG_SWING_THRESHOLD * 100 ? `${swing.toFixed(1)} pts` : '—';
+    return swing >= BIG_SWING_THRESHOLD * 100 ? `${swing.toFixed(1)} pts` : "—";
   }
 
   function computeClutch(series, labels) {
+    if (!series.length) return "—";
     const lastLabel = labels[labels.length - 1];
-    const mid = series[series.length - 1];
-    const isClutch = typeof lastLabel === 'number' ? lastLabel <= 5 && mid >= 35 && mid <= 65 : mid >= 35 && mid <= 65;
-    return isClutch ? 'In clutch' : '—';
+    const last = series[series.length - 1];
+    if (last == null) return "—";
+    const isClutch =
+      typeof lastLabel === "number"
+        ? lastLabel <= 5 && last >= 35 && last <= 65
+        : last >= 35 && last <= 65;
+    return isClutch ? "In clutch" : "—";
   }
 
   function renderPills(metrics, baseline) {
-    els.pillRow.innerHTML = '';
-    const pills = [];
-    if (baseline != null) {
-      pills.push({ label: 'Pregame', value: `${(baseline * 100).toFixed(1)}%`, tone: 'accent' });
-    }
-    if (metrics.momentum !== 'Stable') pills.push({ label: 'Momentum', value: metrics.momentum, tone: 'accent' });
-    if (metrics.bigSwing !== '—') pills.push({ label: 'Big swing', value: metrics.bigSwing, tone: 'warning' });
-    if (metrics.clutch === 'In clutch') pills.push({ label: 'Clutch time', value: 'Tight window', tone: 'danger' });
+    if (!els.pillRow) return;
+    els.pillRow.innerHTML = "";
 
-    if (!pills.length) {
-      pills.push({ label: 'Calm', value: 'No major swings', tone: 'ghost' });
-    }
+    const pills = [];
+    if (baseline != null) pills.push({ label: "Pregame", value: `${(baseline * 100).toFixed(1)}%`, tone: "accent" });
+    if (metrics.momentum !== "Stable") pills.push({ label: "Momentum", value: metrics.momentum, tone: "accent" });
+    if (metrics.bigSwing !== "—") pills.push({ label: "Big swing", value: metrics.bigSwing, tone: "warning" });
+    if (metrics.clutch === "In clutch") pills.push({ label: "Clutch time", value: "Tight window", tone: "danger" });
+
+    if (!pills.length) pills.push({ label: "Calm", value: "No major swings", tone: "ghost" });
 
     pills.forEach((pill) => {
-      const div = document.createElement('div');
-      div.className = `pill ${pill.tone ? `pill--${pill.tone}` : ''}`.trim();
+      const div = document.createElement("div");
+      div.className = `pill ${pill.tone ? `pill--${pill.tone}` : ""}`.trim();
       div.textContent = `${pill.label}: ${pill.value}`;
       els.pillRow.appendChild(div);
     });
   }
 
   function renderBaselinePill(baseline) {
-    if (!baseline) return;
+    if (!els.pregameTag) return;
+    if (baseline == null) return;
     els.pregameTag.textContent = `Pregame baseline: ${(baseline * 100).toFixed(1)}%`;
   }
 
   function smoothSeries(series) {
-    const filtered = series.map((v) => (v == null ? null : v));
-    const values = filtered.filter((v) => v != null);
-    if (!values.length) return series.map(() => null);
-    const padded = [];
+    // Ensure numbers/null only
+    const cleaned = series.map(forceNumberOrNull);
+    const values = cleaned.filter((v) => v != null);
+    if (!values.length) return cleaned.map(() => null);
+
     const pad = Math.floor(SMOOTH_WINDOW / 2);
     const first = values[0];
     const last = values[values.length - 1];
+
+    const padded = [];
     for (let i = 0; i < pad; i++) padded.push(first);
     padded.push(...values);
     for (let i = 0; i < pad; i++) padded.push(last);
@@ -560,131 +583,160 @@
       smoothed.push(parseFloat(avg.toFixed(2)));
     }
 
-    // map smoothed back, preserving nulls
     let idx = 0;
-    return filtered.map((v) => (v == null ? null : smoothed[idx++]));
+    return cleaned.map((v) => (v == null ? null : smoothed[idx++]));
   }
 
   function clampProb(value) {
-    if (value == null || isNaN(value)) return null;
+    if (value == null || Number.isNaN(value)) return null;
     const normalized = value > 1 ? value / 100 : value;
-    const clamped = Math.min(MAX_DISPLAY_PROB, Math.max(MIN_DISPLAY_PROB, normalized));
-    return clamped;
+    return Math.min(MAX_DISPLAY_PROB, Math.max(MIN_DISPLAY_PROB, normalized));
   }
 
   function toPct(value) {
     if (value == null) return null;
+    // percent scale 0..100 with 1 decimal
     return Math.round(value * 1000) / 10;
   }
 
   function parseNumber(val) {
     if (val == null) return null;
-    const num = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
-    return isNaN(num) ? null : num;
+    const num = parseFloat(String(val).replace(/[^0-9.-]/g, ""));
+    return Number.isNaN(num) ? null : num;
   }
 
-  function latestNonEmpty(arr, fallback) {
-    for (let i = arr.length - 1; i >= 0; i--) {
-      const v = (arr[i] || '').trim();
-      if (v) return v;
-    }
-    return fallback;
+  function forceNumberOrNull(v) {
+    if (v == null) return null;
+    const n = typeof v === "number" ? v : parseFloat(v);
+    return Number.isNaN(n) ? null : n;
   }
 
   function setLogo(el, name) {
-    const key = (name || '').toLowerCase();
+    if (!el) return;
+    const key = (name || "").toLowerCase().trim();
     const file = LOGO_MAP[key];
     if (file) {
       el.style.backgroundImage = `url(${logoPath(file)})`;
     } else {
-      el.style.backgroundImage = 'linear-gradient(135deg, rgba(96,165,250,0.2), rgba(168,85,247,0.2))';
+      el.style.backgroundImage = "linear-gradient(135deg, rgba(96,165,250,0.2), rgba(168,85,247,0.2))";
     }
   }
-  
+
   function logoPath(file) {
+    // logos folder beside index.html
     return `logos/${file}`;
   }
 
+  // MVP CSV parsing (robust against header casing)
   function parseMvpCSV(text) {
-    const records = d3.csvParse(text);
-    return records
-      .map((row) => ({
-        player: row.player || row.Player || row.name || 'Player',
-        team: row.team || row.Team || 'Team',
-        winPct: parseNumber(row.win_pct || row['win%'] || row.win) || 0,
-        mvpScore: parseNumber(row.mvp_score || row.score || row.mvp) || 0,
-        impliedWithVig: parseNumber(row.implied_with_vig || row.implied || row['with_vig']) || null,
-        impliedNoVig: parseNumber(row.no_vig || row.implied_no_vig || row['without_vig']) || null,
-        decimalOdds: row.decimal || row.decimal_odds || '',
-        americanOdds: row.american || row.american_odds || '',
-        pass: parseNumber(row.pass) || null,
-        rush: parseNumber(row.rush) || null,
-        recv: parseNumber(row.recv) || null,
-        def: parseNumber(row.def) || null,
-        win: parseNumber(row.win_score || row.win_component) || null,
-        record: row.record || '',
-      }))
+    const rows = d3.csvParse(text);
+    if (!rows || !rows.length) return [];
+
+    const normRow = (row) => {
+      const out = {};
+      for (const [k, v] of Object.entries(row)) out[String(k).trim().toLowerCase()] = v;
+      return out;
+    };
+
+    const pick = (r, keys) => {
+      for (const k of keys) {
+        const v = r[k];
+        if (v != null && String(v).trim() !== "") return v;
+      }
+      return null;
+    };
+
+    return rows
+      .map((row) => {
+        const r = normRow(row);
+        const player = String(pick(r, ["player", "name"]) || "").trim();
+        const team = String(pick(r, ["team"]) || "").trim();
+
+        return {
+          player: player || "Player",
+          team: team || "Team",
+          winPct: parseNumber(pick(r, ["win_pct", "win%", "win"])) || 0,
+          mvpScore: parseNumber(pick(r, ["mvp_score", "score", "mvp"])) || 0,
+          impliedWithVig: parseNumber(pick(r, ["implied_with_vig", "implied", "with_vig"])) ?? null,
+          impliedNoVig: parseNumber(pick(r, ["no_vig", "implied_no_vig", "without_vig"])) ?? null,
+          decimalOdds: String(pick(r, ["decimal", "decimal_odds"]) || "").trim(),
+          americanOdds: String(pick(r, ["american", "american_odds"]) || "").trim(),
+          pass: parseNumber(pick(r, ["pass"])) ?? null,
+          rush: parseNumber(pick(r, ["rush"])) ?? null,
+          recv: parseNumber(pick(r, ["recv"])) ?? null,
+          def: parseNumber(pick(r, ["def"])) ?? null,
+          win: parseNumber(pick(r, ["win_score", "win_component"])) ?? null,
+          record: String(pick(r, ["record"]) || "").trim(),
+        };
+      })
       .filter((r) => r.player);
   }
 
   function renderMvp(records) {
+    if (!els.mvpTableBody) return;
+
     const sorted = [...records].sort((a, b) => {
-      const dir = state.sort.dir === 'asc' ? 1 : -1;
+      const dir = state.sort.dir === "asc" ? 1 : -1;
       const aVal = a[state.sort.key] ?? 0;
       const bVal = b[state.sort.key] ?? 0;
+      if (aVal === bVal) return 0;
       return (aVal > bVal ? 1 : -1) * dir;
     });
 
-    els.mvpTableBody.innerHTML = '';
+    els.mvpTableBody.innerHTML = "";
+
     if (!sorted.length) {
-      els.mvpEmpty.hidden = false;
+      if (els.mvpEmpty) els.mvpEmpty.hidden = false;
       return;
     }
-    els.mvpEmpty.hidden = true;
+    if (els.mvpEmpty) els.mvpEmpty.hidden = true;
 
     const frag = document.createDocumentFragment();
+
     sorted.forEach((row, idx) => {
-      const tr = document.createElement('tr');
-      if (idx < 5) tr.style.boxShadow = 'inset 0 1px 0 rgba(96,165,250,0.2)';
+      const tr = document.createElement("tr");
+      if (idx < 5) tr.style.boxShadow = "inset 0 1px 0 rgba(96,165,250,0.2)";
+
       tr.innerHTML = `
         <td>
           <div class="player">
             <div class="player__avatar">${initials(row.player)}</div>
             <div>
-              <div>${row.player}</div>
-              <div class="details">MVP: ${row.mvpScore.toFixed(1)}</div>
+              <div>${escapeHtml(row.player)}</div>
+              <div class="details">MVP: ${Number(row.mvpScore).toFixed(1)}</div>
             </div>
           </div>
         </td>
         <td>
           <div class="team-chip">
-            <span>${row.team}</span>
-            <span class="record">${row.record || ''}</span>
+            <span>${escapeHtml(row.team)}</span>
+            <span class="record">${escapeHtml(row.record || "")}</span>
           </div>
         </td>
         <td>${formatPct(row.winPct)}</td>
-        <td>${row.mvpScore.toFixed(2)}</td>
+        <td>${Number(row.mvpScore).toFixed(2)}</td>
         <td>
           <div class="details">With Vig: ${formatPct(row.impliedWithVig)}</div>
           <div class="details">No Vig: ${formatPct(row.impliedNoVig)}</div>
         </td>
-        <td>${row.decimalOdds || '—'}</td>
-        <td>${row.americanOdds || '—'}</td>
-        <td><button class="expand-btn" aria-label="Toggle details">View</button></td>
+        <td>${row.decimalOdds || "—"}</td>
+        <td>${row.americanOdds || "—"}</td>
+        <td><button class="expand-btn" type="button" aria-label="Toggle details">View</button></td>
       `;
 
-      const detail = document.createElement('tr');
-      detail.className = 'detail-row hidden';
+      const detail = document.createElement("tr");
+      detail.className = "detail-row hidden";
       detail.innerHTML = `
         <td colspan="8">
-          <div class="details">Pass: ${formatScore(row.pass)} • Rush: ${formatScore(row.rush)} • Recv: ${formatScore(
-        row.recv
-      )} • Def: ${formatScore(row.def)} • Win: ${formatScore(row.win)}</div>
+          <div class="details">
+            Pass: ${formatScore(row.pass)} • Rush: ${formatScore(row.rush)} • Recv: ${formatScore(row.recv)} •
+            Def: ${formatScore(row.def)} • Win: ${formatScore(row.win)}
+          </div>
         </td>
       `;
 
-      tr.querySelector('.expand-btn').addEventListener('click', () => {
-        detail.classList.toggle('hidden');
+      tr.querySelector(".expand-btn")?.addEventListener("click", () => {
+        detail.classList.toggle("hidden");
       });
 
       frag.appendChild(tr);
@@ -692,44 +744,61 @@
     });
 
     els.mvpTableBody.appendChild(frag);
-    els.mvpStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    if (els.mvpStatus) els.mvpStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
 
-    attachSortHandlers();
+    attachSortHandlersOnce();
   }
 
-  function attachSortHandlers() {
-    document.querySelectorAll('#mvpTable thead th[data-sort]').forEach((th) => {
-      th.onclick = () => {
+  function attachSortHandlersOnce() {
+    if (state.sortHandlersAttached) return;
+    state.sortHandlersAttached = true;
+
+    document.querySelectorAll("#mvpTable thead th[data-sort]").forEach((th) => {
+      th.addEventListener("click", () => {
         const key = th.dataset.sort;
+        if (!key) return;
+
         if (state.sort.key === key) {
-          state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
+          state.sort.dir = state.sort.dir === "asc" ? "desc" : "asc";
         } else {
           state.sort.key = key;
-          state.sort.dir = 'desc';
+          state.sort.dir = "desc";
         }
-        fetchMvp();
-      };
+
+        // Re-render using last records (don’t refetch just to sort)
+        renderMvp(state.lastMvpRecords || []);
+      });
     });
   }
 
   function formatPct(value) {
-    if (value == null || isNaN(value)) return '—';
+    if (value == null || Number.isNaN(value)) return "—";
     const normalized = value > 1 ? value : value * 100;
     return `${normalized.toFixed(1)}%`;
   }
 
   function formatScore(value) {
-    if (value == null || isNaN(value)) return '—';
-    return value.toFixed(1);
+    if (value == null || Number.isNaN(value)) return "—";
+    return Number(value).toFixed(1);
   }
 
   function initials(name) {
-    return name
-      .split(' ')
+    return String(name)
+      .split(" ")
+      .filter(Boolean)
       .map((p) => p[0])
-      .join('')
+      .join("")
       .slice(0, 2)
       .toUpperCase();
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
   }
 
   function setLoading(el, isLoading) {
@@ -746,9 +815,11 @@
     const samples = [];
     const pregame = 0.62;
     let current = pregame * 100;
+
     for (let i = 12; i >= 0; i--) {
       const drift = (Math.sin((12 - i) / 3) + Math.random() * 0.5 - 0.25) * 3;
       current = Math.min(99, Math.max(1, current + drift));
+
       samples.push({
         update: `U${12 - i + 1}`,
         minuteLeft: i,
@@ -756,7 +827,7 @@
         winProbAway: 1 - current / 100,
         scoreA: Math.max(0, Math.round((12 - i) / 3)),
         scoreB: Math.max(0, Math.round((12 - i) / 2)),
-        possession: (12 - i) % 2 === 0 ? 'Home' : 'Away',
+        possession: (12 - i) % 2 === 0 ? "Home" : "Away",
         quarter: Math.min(4, Math.ceil((12 - i + 1) / 3)),
         down: ((12 - i) % 4) + 1,
         distance: 10,
@@ -767,9 +838,9 @@
 
     return {
       snapshots: samples,
-      teamA: 'Away',
-      teamB: 'Home',
-      teams: ['Away', 'Home'],
+      teamA: "Away",
+      teamB: "Home",
+      teams: ["Away", "Home"],
       baseline: pregame,
     };
   }
@@ -777,36 +848,36 @@
   function buildSampleMvp() {
     return [
       {
-        player: 'Sample QB',
-        team: 'Cards',
+        player: "Sample QB",
+        team: "Cards",
         winPct: 0.65,
         mvpScore: 89.3,
         impliedWithVig: 0.2,
         impliedNoVig: 0.17,
-        decimalOdds: '5.0',
-        americanOdds: '+400',
+        decimalOdds: "5.0",
+        americanOdds: "+400",
         pass: 24.5,
         rush: 6.4,
         recv: 0,
         def: 1.2,
         win: 12.3,
-        record: '10-2',
+        record: "10-2",
       },
       {
-        player: 'Star WR',
-        team: 'Cowboys',
+        player: "Star WR",
+        team: "Cowboys",
         winPct: 0.6,
         mvpScore: 82.1,
         impliedWithVig: 0.15,
         impliedNoVig: 0.12,
-        decimalOdds: '7.5',
-        americanOdds: '+650',
+        decimalOdds: "7.5",
+        americanOdds: "+650",
         pass: 0,
         rush: 2.1,
         recv: 20.5,
         def: 0,
         win: 9.4,
-        record: '9-3',
+        record: "9-3",
       },
     ];
   }
