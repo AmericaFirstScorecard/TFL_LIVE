@@ -1,1 +1,41 @@
+def main():
+    import os
+    import urllib.request
+    from pathlib import Path
 
+    if not PIL_OK:
+        raise RuntimeError("Pillow required: pip install pillow")
+
+    # Where we read/write in the repo (Actions-friendly)
+    global CSV_PATH, OUT_PATH
+    CSV_PATH = os.environ.get("CSV_PATH", CSV_PATH)     # default snapshot.csv
+    OUT_PATH = os.environ.get("OUT_PATH", OUT_PATH)     # default site/latest.png
+
+    sheet_url = os.environ.get("SHEET_CSV_URL", "").strip()
+
+    # If a live Sheet URL is provided, download it every run
+    if sheet_url:
+        Path(CSV_PATH).parent.mkdir(parents=True, exist_ok=True)
+        req = urllib.request.Request(
+            sheet_url,
+            headers={"User-Agent": "Mozilla/5.0 (GitHub Actions)"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = r.read()
+        Path(CSV_PATH).write_bytes(data)
+        print("Downloaded CSV from Google Sheet →", CSV_PATH)
+
+    if not os.path.exists(CSV_PATH):
+        raise FileNotFoundError(f"CSV not found: {os.path.abspath(CSV_PATH)}")
+
+    # Ensure output folder exists
+    Path(OUT_PATH).parent.mkdir(parents=True, exist_ok=True)
+
+    fieldnames, rows = read_csv_rows_until_empty(CSV_PATH)
+    mapping = build_header_map(fieldnames)
+    snaps = parse_snapshots(rows, mapping)
+
+    render_card(snaps, OUT_PATH)
+    print("Saved:", OUT_PATH)
+
+    export_frames_and_gif(snaps)
