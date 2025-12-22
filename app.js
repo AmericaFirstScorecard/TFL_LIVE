@@ -25,6 +25,18 @@ const DISPLAY_CLAMP_HI = 0.99;
 const MOMENTUM_N = 5;
 const SHOW_PREGAME_BASELINE = true;
 
+// Fallback CSV (used when the live sheet can't be fetched).
+// Structure matches the "team headers in column C/D" layout.
+const SAMPLE_CSV = `Update #,Minutes Left,Giants,Bengals,Away Win Probability,Quarter,Down,Distance,Yards To Goal,Pregame Win Prob
+1,60,0,0,0.55,1,1,10,75,0.48
+2,50,3,0,0.58,2,2,6,60,
+3,38,3,7,0.44,3,3,8,52,
+4,24,10,10,0.51,3,1,10,38,
+5,12,13,17,0.33,4,2,5,26,
+6,4,16,24,0.18,4,3,12,12,
+7,0,16,24,0.05,4,4,15,0,
+`;
+
 /** =========================
  *  ASSET MAP (your keys)
  *  logos/ in your repo
@@ -1046,7 +1058,14 @@ async function tick(canvas){
   if (!SHEET_CSV_URL || SHEET_CSV_URL.startsWith("PASTE_")){
     throw new Error("Set SHEET_CSV_URL in app.js to your published Google Sheet CSV link.");
   }
-  const csvText = await fetchCSV(SHEET_CSV_URL);
+  let csvText = null;
+  try {
+    csvText = await fetchCSV(SHEET_CSV_URL);
+  } catch (e) {
+    console.warn("Falling back to sample CSV due to fetch error", e);
+    csvText = SAMPLE_CSV;
+  }
+
   const { headers, data } = parseCSV(csvText);
   const parsed = parseSnapshotsFromCSV(headers, data);
   await renderCardFromData(canvas, parsed);
