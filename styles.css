@@ -171,7 +171,9 @@ body {
   align-items: center;
   justify-items: center;
   gap: 16px;
-  margin-bottom: 12px;
+  margin: 0 auto 12px;
+  max-width: 1080px;
+  width: 100%;
 }
 
 .team {
@@ -258,6 +260,7 @@ body {
   max-width: 440px;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   align-items: center;
+  margin-inline: auto;
 }
 
 .score__line {
@@ -1161,7 +1164,8 @@ body {
 @media (max-width: 900px) {
   .teams {
     grid-template-columns: 1fr;
-    justify-items: stretch;
+    justify-items: center;
+    max-width: 520px;
   }
 
   .hero {
