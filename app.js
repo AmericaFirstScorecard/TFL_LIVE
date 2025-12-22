@@ -28,7 +28,7 @@
   // Paste your published CSV endpoint here:
   // Example:
   // const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/XXXX/gviz/tq?tqx=out:csv&sheet=Week3";
-  const SHEET_CSV_URL = "PASTE_YOUR_PUBLISHED_CSV_URL_HERE";
+  const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv";
 
   const DEFAULTS = {
     leagueName: "Tate Football League",
