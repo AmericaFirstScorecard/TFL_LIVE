@@ -123,6 +123,7 @@
     initTabs();
     initChart();
     initDetailOverlay();
+    initPlayerOverlay();
 
     // Debug: proves what your deployed JS is using
     console.info("[TFL] MATCHUP_CSV_URL =", MATCHUP_CSV_URL);
@@ -176,12 +177,13 @@
     els.ytg = id("ytg");
     els.lastUpdate = id("lastUpdate");
 
-    els.teamListChip = id("teamListChip");
-
     els.momentumValue = id("momentumValue");
     els.swingValue = id("swingValue");
     els.clutchValue = id("clutchValue");
     els.baselineValue = id("baselineValue");
+
+    els.liveStatsGrid = id("liveStatsGrid");
+    els.liveStatsEmpty = id("liveStatsEmpty");
 
     els.winLoading = id("winLoading");
     els.winError = id("winError");
@@ -218,6 +220,10 @@
     els.teamSummary = id("teamSummary");
     els.teamPlayers = id("teamPlayers");
     els.playerDetail = id("playerDetail");
+
+    els.playerOverlay = id("playerOverlay");
+    els.playerOverlayClose = id("playerOverlayClose");
+    els.playerOverlayContent = id("playerOverlayContent");
   }
 
   function initTabs() {
@@ -390,6 +396,20 @@
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") closeOverlay();
+    });
+  }
+
+  function initPlayerOverlay() {
+    const closeOverlay = () => {
+      if (els.playerOverlay) els.playerOverlay.hidden = true;
+    };
+
+    els.playerOverlayClose?.addEventListener("click", closeOverlay);
+    els.playerOverlay?.addEventListener("click", (e) => {
+      if (e.target === els.playerOverlay || e.target.classList.contains("overlay__backdrop")) closeOverlay();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && els.playerOverlay && !els.playerOverlay.hidden) closeOverlay();
     });
   }
 
@@ -980,7 +1000,7 @@
   // =======================
   // RENDERING
   // =======================
-  function renderMatchup({ snapshots, teams, baseline, teamA, teamB }) {
+  function renderMatchup({ snapshots, teams, baseline, teamA, teamB, latestStats }) {
     if (!snapshots.length) return;
 
     const maxMinute = Math.max(...snapshots.map((s) => s.minuteLeft ?? 0));
@@ -1045,10 +1065,6 @@
 
     const resolvedTeamList = (teams || []).map((t) => resolveTeam(t).displayName);
 
-    if (els.teamListChip)
-      els.teamListChip.textContent = resolvedTeamList.length
-        ? `Teams: ${resolvedTeamList.join(", ")}`
-        : "Teams: —";
     if (els.lastUpdate) els.lastUpdate.textContent = `Last update: ${latest.update}`;
 
     setLogo(els.teamALogo, teamAInfo.logoKey);
@@ -1074,6 +1090,7 @@
     if (els.clutchValue) els.clutchValue.textContent = metrics.clutch;
 
     renderPills(metrics, pregameBaseline, liveBaseline);
+    renderLiveStats(latestStats, teamAInfo, teamBInfo);
     const derivedStats = deriveMatchupStats(snapshots, teamAInfo, teamBInfo);
     renderBreakdown(derivedStats, teamAInfo, teamBInfo);
 
@@ -1154,25 +1171,21 @@
         <td><button class="expand-btn" type="button">View</button></td>
       `;
 
-      const detail = document.createElement("tr");
-      detail.className = "detail-row hidden";
-      detail.innerHTML = `
-        <td colspan="8">
-          <div class="details">
-            Pass Rating: ${passRating} • Comp%: ${row.compPct != null ? formatPct(row.compPct) : "—"} •
-            Completions/Attempts: ${formatScore(row.completions)} / ${formatScore(row.attempts)} •
-            Rush Yds: ${formatScore(row.rushYards)} • Rec Yds: ${formatScore(row.recvYards)} • Def Score: ${formatScore(row.defScore)} •
-            Wins: ${formatScore(row.wins)} • Weighting: Pass×${MVP_WEIGHTS.pass}, Rush×${MVP_WEIGHTS.rush}, Recv×${MVP_WEIGHTS.recv}, Def×${MVP_WEIGHTS.def}, Wins×${MVP_WEIGHTS.wins}
-          </div>
-        </td>
-      `;
-
-      tr.querySelector(".expand-btn")?.addEventListener("click", () => {
-        detail.classList.toggle("hidden");
+      const openDetail = () => openPlayerOverlay(row);
+      tr.querySelector(".expand-btn")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openDetail();
+      });
+      tr.tabIndex = 0;
+      tr.addEventListener("click", openDetail);
+      tr.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openDetail();
+        }
       });
 
       frag.appendChild(tr);
-      frag.appendChild(detail);
     });
 
     els.mvpTableBody.appendChild(frag);
@@ -1362,6 +1375,61 @@
     `;
     els.playerDetail.innerHTML = "";
     els.playerDetail.appendChild(card);
+  }
+
+  function openPlayerOverlay(player) {
+    if (!els.playerOverlay || !els.playerOverlayContent) return;
+    const teamInfo = resolveTeam(player.team);
+    const standing = findTeamRecord(teamInfo.displayName, player.team);
+
+    const metrics = [
+      { label: "Pass rating", value: formatScore(player.passRating) },
+      { label: "Comp%", value: formatPct(player.compPct) },
+      {
+        label: "Completions / Att",
+        value: `${formatCount(player.completions)} / ${formatCount(player.attempts)}`,
+      },
+      { label: "Yards", value: player.yards != null ? Number(player.yards).toLocaleString() : "—" },
+      { label: "TD / INT", value: player.passTd != null || player.interceptions != null ? `${player.passTd ?? 0}/${player.interceptions ?? 0}` : "—" },
+      { label: "Rush yds", value: formatScore(player.rushYards) },
+      { label: "Rec yds", value: formatScore(player.recvYards) },
+      { label: "Targets", value: formatCount(player.targets) },
+      { label: "Def score", value: formatScore(player.defScore) },
+      { label: "Total TD", value: formatCount(player.totalTd) },
+      { label: "Wins", value: formatCount(player.wins) },
+    ];
+
+    const modal = document.createElement("div");
+    modal.className = "player-modal";
+    modal.innerHTML = `
+      <div class="player-modal__header">
+        ${playerAvatar(player)}
+        <div>
+          <div class="player-modal__title" id="playerOverlayTitle">${escapeHtml(player.player)}</div>
+          <div class="player-modal__subtitle">
+            <span>${escapeHtml(teamInfo.displayName)}</span>
+            <span>${standing ? escapeHtml(formatRecord(standing)) : "Record —"}</span>
+            <span>Win%: ${formatPct(player.winPct)}</span>
+          </div>
+        </div>
+        <div class="player-modal__badge">${formatScore(player.mvpScore)} MVP</div>
+      </div>
+      <div class="player-modal__grid">
+        ${metrics
+          .map(
+            (m) => `
+          <div class="player-modal__stat">
+            <div class="player-modal__stat-label">${m.label}</div>
+            <div class="player-modal__stat-value">${m.value}</div>
+          </div>`
+          )
+          .join("")}
+      </div>
+    `;
+
+    els.playerOverlayContent.innerHTML = "";
+    els.playerOverlayContent.appendChild(modal);
+    els.playerOverlay.hidden = false;
   }
 
   function renderBracket(rows) {
@@ -1686,6 +1754,80 @@
       div.textContent = `${pill.label}: ${pill.value}`;
       els.pillRow.appendChild(div);
     });
+  }
+
+  function renderLiveStats(teamStats, teamAInfo, teamBInfo) {
+    if (!els.liveStatsGrid || !els.liveStatsEmpty) return;
+    els.liveStatsGrid.innerHTML = "";
+
+    if (!teamStats) {
+      els.liveStatsEmpty.hidden = false;
+      return;
+    }
+    els.liveStatsEmpty.hidden = true;
+
+    const cards = [
+      { label: "Total yards", a: formatCount(teamStats.totalYardsA), b: formatCount(teamStats.totalYardsB) },
+      { label: "First downs", a: formatCount(teamStats.firstDownsA), b: formatCount(teamStats.firstDownsB) },
+      {
+        label: "3rd down",
+        a: formatConversionDisplay(teamStats.thirdConvA, teamStats.thirdMadeA, teamStats.thirdAttA),
+        b: formatConversionDisplay(teamStats.thirdConvB, teamStats.thirdMadeB, teamStats.thirdAttB),
+      },
+      {
+        label: "4th down",
+        a: formatConversionDisplay(teamStats.fourthConvA, teamStats.fourthMadeA, teamStats.fourthAttA),
+        b: formatConversionDisplay(teamStats.fourthConvB, teamStats.fourthMadeB, teamStats.fourthAttB),
+      },
+      { label: "Turnovers", a: formatCount(teamStats.turnoversA), b: formatCount(teamStats.turnoversB) },
+      { label: "Penalties", a: formatCount(teamStats.penaltiesA), b: formatCount(teamStats.penaltiesB) },
+      { label: "Yards / play", a: formatScore(teamStats.yardsPerPlayA), b: formatScore(teamStats.yardsPerPlayB) },
+      {
+        label: "Time of possession",
+        a: formatPossessionClock(teamStats.topA),
+        b: formatPossessionClock(teamStats.topB),
+      },
+      {
+        label: "Red zone",
+        a: formatConversionDisplay(teamStats.redZoneA, null, null),
+        b: formatConversionDisplay(teamStats.redZoneB, null, null),
+      },
+    ];
+
+    const chip = (team, value, tone) => {
+      const div = document.createElement("div");
+      div.className = `team-stat ${tone ? `team-stat--${tone}` : ""}`.trim();
+      const logo = document.createElement("div");
+      logo.className = "team-stat__logo";
+      setLogo(logo, team.logoKey);
+      const val = document.createElement("div");
+      val.className = "team-stat__value";
+      val.textContent = value ?? "—";
+      div.appendChild(logo);
+      div.appendChild(val);
+      return div;
+    };
+
+    const frag = document.createDocumentFragment();
+    cards.forEach((card) => {
+      const container = document.createElement("div");
+      container.className = "live-stat-card";
+
+      const heading = document.createElement("div");
+      heading.className = "live-stat-card__heading";
+      heading.textContent = card.label;
+      container.appendChild(heading);
+
+      const values = document.createElement("div");
+      values.className = "live-stat-card__values";
+      values.appendChild(chip(teamAInfo, card.a, "left"));
+      values.appendChild(chip(teamBInfo, card.b, "right"));
+      container.appendChild(values);
+
+      frag.appendChild(container);
+    });
+
+    els.liveStatsGrid.appendChild(frag);
   }
 
   function renderBreakdown(stats, teamAInfo, teamBInfo) {
@@ -2420,6 +2562,7 @@
       teamB: "Home",
       teams: ["Away", "Home"],
       baseline: pregame,
+      latestStats: samples[samples.length - 1]?.teamStats || null,
     };
   }
 
