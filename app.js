@@ -6,7 +6,10 @@
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv";
 
   const MVP_CSV_URL =
-    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQp0jxVIwA59hH031QxJFBsXdQVIi7fNdPS5Ra2w1lK2UYA08rC0moSSqoKPSFL8BRZFh_hC4cO8ymk/pub?output=csv";
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQp0jxVIwA59hH031QxJFBsXdQVIi7fNdPS5Ra2w1lK2UYA08rC0moSSqoKPSFL8BRZFh_hC4cO8ymk/pub?output=xlsx";
+
+  const TEAM_A = { name: "Team A", logoFile: "Cards.png" };
+  const TEAM_B = { name: "Team B", logoFile: "cowboys.png" };
 
   const POLL_MS = 30_000;
 
@@ -17,29 +20,9 @@
   const MOMENTUM_THRESHOLD = 0.025;
   const BIG_SWING_THRESHOLD = 0.12;
 
-  // Try to be forgiving about team naming and file casing
   const LOGO_MAP = {
-    cards: "Cards.png",
-    cardinals: "Cards.png",
-    "arizona cardinals": "Cards.png",
-    lou: "Cards.png",
-    louis: "Cards.png",
-
-    bengals: "bengals.png",
-    "cincinnati bengals": "bengals.png",
-
-    "49ers": "Sanfran.png",
-    sanfran: "Sanfran.png",
-    "san fran": "Sanfran.png",
-    "san francisco": "Sanfran.png",
-    "san francisco 49ers": "Sanfran.png",
-    sf: "Sanfran.png",
-
-    cowboys: "cowboys.png",
-    "dallas cowboys": "cowboys.png",
-
-    giants: "giants.png",
-    "new york giants": "giants.png",
+    [TEAM_A.name.toLowerCase()]: TEAM_A.logoFile,
+    [TEAM_B.name.toLowerCase()]: TEAM_B.logoFile,
   };
 
   // =======================
@@ -219,22 +202,24 @@
             data: [],
             tension: 0.35,
             fill: true,
-            spanGaps: true,
+            spanGaps: false,
             borderColor: "rgba(96,165,250,1)",
             backgroundColor: gradientA,
             pointRadius: 0,
             borderWidth: 3,
+            cubicInterpolationMode: "monotone",
           },
           {
             label: "Team B",
             data: [],
             tension: 0.35,
             fill: true,
-            spanGaps: true,
+            spanGaps: false,
             borderColor: "rgba(168,85,247,1)",
             backgroundColor: gradientB,
             pointRadius: 0,
             borderWidth: 3,
+            cubicInterpolationMode: "monotone",
           },
         ],
       },
@@ -300,6 +285,14 @@
     return text;
   }
 
+  async function fetchArrayBuffer(url) {
+    const u = new URL(url, window.location.href);
+    u.searchParams.set("_cb", Date.now().toString());
+    const res = await fetch(u.toString(), { method: "GET", cache: "no-store", redirect: "follow" });
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} for ${u.toString()}`);
+    return res.arrayBuffer();
+  }
+
   async function fetchMatchup() {
     setLoading(els.winLoading, true);
     toggleError(els.winError, false);
@@ -327,8 +320,8 @@
     const url = overrideUrl("mvp") || MVP_CSV_URL;
 
     try {
-      const text = await fetchText(url);
-      const records = parseMvpCSV(text);
+      const buffer = await fetchArrayBuffer(url);
+      const records = parseMvpXlsx(buffer);
       state.lastMvpRecords = records;
       renderMvp(records);
       setLoading(els.mvpLoading, false);
@@ -379,10 +372,6 @@
       return clampProb(p);
     };
 
-    const last = norm(rows[rows.length - 1]);
-    const teamA = String(pick(last, ["team a", "away"]) || "Team A").trim();
-    const teamB = String(pick(last, ["team b", "home"]) || "Team B").trim();
-
     const snapshots = rows.map((row, i) => {
       const r = norm(row);
 
@@ -397,7 +386,7 @@
       const scoreB = parseNumber(pick(r, ["team b point", "team b points"])) ?? 0;
 
       const hasBall = parseNumber(pick(r, ["team a has ball (1=yes, 0=no)", "team a has ball"]));
-      const possession = hasBall == null ? "" : hasBall === 1 ? teamA : teamB;
+      const possession = hasBall == null ? "" : hasBall === 1 ? TEAM_A.name : TEAM_B.name;
 
       const quarter = String(pick(r, ["quarter", "qtr"]) || "").trim();
       const down = String(pick(r, ["down"]) || "").trim();
@@ -423,14 +412,18 @@
     });
 
     const baseline = snapshots.find((s) => s.pregame != null)?.pregame ?? snapshots[0]?.winProbHome ?? null;
-    const teams = Array.from(new Set([teamA, teamB].filter(Boolean)));
+    const teams = Array.from(new Set([TEAM_A.name, TEAM_B.name].filter(Boolean)));
 
-    return { snapshots, teamA, teamB, teams, baseline };
+    return { snapshots, teams, baseline };
   }
 
-  function parseMvpCSV(text) {
-    const rows = d3.csvParse(text);
-    if (!rows || !rows.length) return [];
+  function parseMvpXlsx(buffer) {
+    if (typeof XLSX === "undefined") throw new Error("XLSX library not loaded");
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) return [];
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+    if (!rows.length) return [];
 
     const norm = (obj) => {
       const out = {};
@@ -472,10 +465,13 @@
   // =======================
   // RENDERING
   // =======================
-  function renderMatchup({ snapshots, teamA, teamB, teams, baseline }) {
+  function renderMatchup({ snapshots, teams, baseline }) {
     if (!snapshots.length) return;
 
-    const labels = snapshots.map((s) => s.minuteLeft ?? s.update);
+    const maxMinute = Math.max(...snapshots.map((s) => s.minuteLeft ?? 0));
+    const labels = snapshots.map((s) =>
+      formatElapsed(Math.max(0, maxMinute - (s.minuteLeft ?? maxMinute)))
+    );
 
     const home = smoothSeries(snapshots.map((s) => toPct(s.winProbHome)));
     const away = smoothSeries(snapshots.map((s) => toPct(s.winProbAway)));
@@ -485,7 +481,7 @@
     if (els.baselineValue) els.baselineValue.textContent = baseline != null ? `${(baseline * 100).toFixed(1)}%` : "—";
     if (els.pregameTag) els.pregameTag.textContent = baseline != null ? `Pregame baseline: ${(baseline * 100).toFixed(1)}%` : "Pregame baseline: —";
 
-    updateChart(labels, home, away, teamA, teamB);
+    updateChart(labels, home, away, TEAM_A.name, TEAM_B.name);
 
     const latest = snapshots[snapshots.length - 1];
 
@@ -495,24 +491,28 @@
       els.gameStatus.classList.toggle("badge--ghost", isFinal);
     }
 
-    if (els.teamAName) els.teamAName.textContent = teamA;
-    if (els.teamBName) els.teamBName.textContent = teamB;
+    if (els.teamAName) els.teamAName.textContent = TEAM_A.name;
+    if (els.teamBName) els.teamBName.textContent = TEAM_B.name;
 
     if (els.teamAScore) els.teamAScore.textContent = String(latest.scoreA ?? 0);
     if (els.teamBScore) els.teamBScore.textContent = String(latest.scoreB ?? 0);
 
-    if (els.possession) els.possession.textContent = latest.possession ? `Possession: ${latest.possession}` : "Possession —";
+    if (els.possession)
+      els.possession.textContent = latest.possession
+        ? `Possession: ${latest.possession}`
+        : "Possession —";
     if (els.quarter) els.quarter.textContent = latest.quarter ? `Q${latest.quarter}` : "Q-";
-    if (els.clock) els.clock.textContent = latest.minuteLeft != null ? `${latest.minuteLeft} ML` : "ML —";
+    if (els.clock) els.clock.textContent = latest.minuteLeft != null ? `${formatClock(latest.minuteLeft)} ML` : "ML —";
 
     if (els.downDistance) els.downDistance.textContent = latest.down ? `Down: ${latest.down}` : "Down —";
     if (els.ytg) els.ytg.textContent = latest.ytg || latest.distance ? `${latest.ytg || latest.distance} YTG` : "YTG —";
 
-    if (els.teamListChip) els.teamListChip.textContent = teams.length ? `Teams: ${teams.join(", ")}` : "Teams: —";
+    if (els.teamListChip)
+      els.teamListChip.textContent = teams.length ? `Teams: ${teams.join(", ")}` : "Teams: —";
     if (els.lastUpdate) els.lastUpdate.textContent = `Last update: ${latest.update}`;
 
-    setLogo(els.teamALogo, teamA);
-    setLogo(els.teamBLogo, teamB);
+    setLogo(els.teamALogo, TEAM_A.logoFile);
+    setLogo(els.teamBLogo, TEAM_B.logoFile);
 
     const metrics = analyzeGame(home, labels);
     if (els.momentumValue) els.momentumValue.textContent = metrics.momentum;
@@ -733,6 +733,21 @@
     return Math.min(MAX_DISPLAY_PROB, Math.max(MIN_DISPLAY_PROB, normalized));
   }
 
+  function formatClock(minutesLeft) {
+    if (minutesLeft == null || Number.isNaN(minutesLeft)) return "0:00";
+    const totalSeconds = Math.max(0, Math.round(minutesLeft * 60));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = String(totalSeconds % 60).padStart(2, "0");
+    return `${minutes}:${seconds}`;
+  }
+
+  function formatElapsed(elapsedMinutes) {
+    if (elapsedMinutes == null || Number.isNaN(elapsedMinutes)) return "0:00";
+    const minutes = Math.floor(elapsedMinutes);
+    const seconds = Math.round((elapsedMinutes - minutes) * 60);
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+
   function toPct(value) {
     if (value == null) return null;
     return Math.round(value * 1000) / 10; // 1 decimal
@@ -829,10 +844,10 @@
     return Array.from(new Set([base, lower, upperFirst, titleish]));
   }
 
-  async function setLogo(el, teamName) {
+  async function setLogo(el, logoKey) {
     if (!el) return;
-    const key = (teamName || "").toLowerCase().trim();
-    const mapped = LOGO_MAP[key];
+    const key = (logoKey || "").toLowerCase().trim();
+    const mapped = LOGO_MAP[key] || logoKey;
 
     if (!mapped) {
       el.style.backgroundImage =
