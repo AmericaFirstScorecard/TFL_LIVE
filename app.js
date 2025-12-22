@@ -20,17 +20,11 @@
   // TFL-provided team code mapping -> display name + logo slug
   // NOTE: update or extend as codes evolve.
   const TEAM_CODE_MAP = {
-    "0": { name: "Arizona Cardinals", logo: "cards" },
-    "7": { name: "Cincinnati Bengals", logo: "bengals" },
-    "13": { name: "San Francisco 49ers", logo: "sanfran" },
-    "14": { name: "Dallas Cowboys", logo: "cowboys" },
-    "21": { name: "New York Giants", logo: "giants" },
-    "29": { name: "Arizona Cardinals", logo: "cards" },
-    "35": { name: "Cincinnati Bengals", logo: "bengals" },
-    "42": { name: "San Francisco 49ers", logo: "sanfran" },
-    "49": { name: "Dallas Cowboys", logo: "cowboys" },
-    "56": { name: "New York Giants", logo: "giants" },
-    "63": { name: "Arizona Cardinals", logo: "cards" },
+    "0": { name: "Louisville Cardinals", logo: "cards" },
+    "1": { name: "Cincinnati Bengals", logo: "bengals" },
+    "2": { name: "San Francisco 49ers", logo: "sanfran" },
+    "3": { name: "Dallas Cowboys", logo: "cowboys" },
+    "4": { name: "New York Giants", logo: "giants" },
   };
 
   const LOGO_MAP = buildLogoMap();
