@@ -14,6 +14,7 @@
     'arizona cardinals': 'Cards.png',
     bengals: 'bengals.png',
     'cincinnati bengals': 'bengals.png',
+    "forty niners": 'Sanfran.png',
     niners: 'Sanfran.png',
     sanfran: 'Sanfran.png',
     'san fran': 'Sanfran.png',
