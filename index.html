@@ -1,1 +1,42 @@
-
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Win Probability Card</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #0c101c; color: #fff; }
+    .wrap {
+      min-height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      box-sizing: border-box;
+    }
+    canvas {
+      width: min(96vw, 1800px);
+      height: auto;
+      aspect-ratio: 1800 / 1050;
+      border-radius: 22px;
+      box-shadow: 0 40px 120px rgba(0,0,0,.55);
+      background: transparent;
+    }
+    .hint {
+      position: fixed;
+      left: 14px;
+      bottom: 12px;
+      font: 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      color: rgba(255,255,255,.6);
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="card" width="1800" height="1050"></canvas>
+  </div>
+  <div class="hint" id="hint"></div>
+  <script src="./app.js"></script>
+</body>
+</html>
