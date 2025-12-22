@@ -52,14 +52,19 @@
   const TEAM_COLORS = {
     cards: "#97233F",
     lou: "#97233F",
+    "louisville cardinals": "#97233F",
     bengals: "#FB4F14",
     cin: "#FB4F14",
+    "cincinnati bengals": "#FB4F14",
     sanfran: "#AA0000",
     "49ers": "#AA0000",
+    "san francisco 49ers": "#AA0000",
     cowboys: "#041E42",
     dal: "#041E42",
+    "dallas cowboys": "#041E42",
     giants: "#0B2265",
     ny: "#0B2265",
+    "new york giants": "#0B2265",
   };
 
   const MVP_WEIGHTS = { pass: 2.0, rush: 1.0, recv: 1.0, def: 1.0, wins: 2 };
@@ -120,6 +125,8 @@
     els.teamBName = id("teamBName");
     els.teamALogo = id("teamALogo");
     els.teamBLogo = id("teamBLogo");
+    els.teamAPossession = id("teamAPossession");
+    els.teamBPossession = id("teamBPossession");
 
     els.teamARecord = id("teamARecord");
     els.teamBRecord = id("teamBRecord");
@@ -437,8 +444,7 @@
       return clampProb(p);
     };
 
-    const teamAKey = columns[2] || columns.find((c) => /team\s*a/i.test(c)) || "Team A";
-    const teamBKey = columns[3] || columns.find((c) => /team\s*b/i.test(c)) || "Team B";
+    const [teamAKey, teamBKey] = pickTeamHeaders(columns);
     const teamAName = resolveTeam(teamAKey).displayName;
     const teamBName = resolveTeam(teamBKey).displayName;
 
@@ -763,6 +769,7 @@
 
     if (els.downDistance) els.downDistance.textContent = latest.down ? `Down: ${latest.down}` : "Down —";
     if (els.ytg) els.ytg.textContent = latest.ytg || latest.distance ? `${latest.ytg || latest.distance} YTG` : "YTG —";
+    updatePossessionIndicators(teamAInfo, teamBInfo, latest.possession);
 
     const resolvedTeamList = (teams || []).map((t) => resolveTeam(t).displayName);
 
@@ -1052,6 +1059,24 @@
     return Math.min(MAX_DISPLAY_PROB, Math.max(MIN_DISPLAY_PROB, normalized));
   }
 
+  function canonicalTeamKey(raw) {
+    const cleaned = String(raw ?? "").trim();
+    if (!cleaned) return null;
+
+    // Numeric codes sometimes come through as floats (e.g., "4.0")
+    const asNumber = Number(cleaned);
+    if (!Number.isNaN(asNumber)) {
+      const intKey = String(Math.trunc(asNumber));
+      if (TEAM_CODE_MAP[intKey]) return intKey;
+    }
+
+    const norm = normalizeTeamKey(cleaned);
+    if (TEAM_CODE_MAP[cleaned]) return cleaned;
+    if (TEAM_CODE_MAP[norm]) return norm;
+    if (STANDINGS_ALIASES[norm]) return STANDINGS_ALIASES[norm];
+    return null;
+  }
+
   function normalizeTeamKey(name) {
     return String(name || "")
       .trim()
@@ -1060,13 +1085,14 @@
 
   function resolveTeam(raw) {
     const cleaned = String(raw ?? "").trim();
-    if (!cleaned) return { displayName: "Team", logoKey: "" };
+    if (!cleaned) return { displayName: "Team", logoKey: "", canonicalKey: "" };
 
-    const codeMatch = TEAM_CODE_MAP[cleaned];
+    const canonical = canonicalTeamKey(cleaned);
+    const codeMatch = canonical ? TEAM_CODE_MAP[canonical] : null;
     const displayName = codeMatch?.name || cleaned;
-    const logoKey = codeMatch?.logo || normalizeTeamKey(displayName);
+    const logoKey = codeMatch?.logo || (canonical || normalizeTeamKey(displayName));
 
-    return { displayName, logoKey };
+    return { displayName, logoKey, canonicalKey: canonical || normalizeTeamKey(displayName) };
   }
 
   function formatClock(minutesLeft) {
@@ -1075,6 +1101,30 @@
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = String(totalSeconds % 60).padStart(2, "0");
     return `${minutes}:${seconds}`;
+  }
+
+  function pickTeamHeaders(columns) {
+    const found = findTeamColumns(columns);
+    const fallbackA = columns.find((c) => /team\s*a/i.test(c));
+    const fallbackB = columns.find((c) => /team\s*b/i.test(c));
+    return [
+      found[0] || fallbackA || columns[2] || columns[0] || "Team A",
+      found[1] || fallbackB || columns[3] || columns[1] || "Team B",
+    ];
+  }
+
+  function findTeamColumns(columns) {
+    const seen = new Set();
+    const matches = [];
+    columns
+      .map((col) => ({ col, key: canonicalTeamKey(col) }))
+      .filter((entry) => entry.key)
+      .forEach((entry) => {
+        if (seen.has(entry.key)) return;
+        matches.push(entry.col);
+        seen.add(entry.key);
+      });
+    return matches;
   }
 
   function toPct(value) {
@@ -1171,6 +1221,10 @@
     return TEAM_COLORS[norm] || "#60a5fa";
   }
 
+  function teamColorKey(team) {
+    return team.logoKey || team.canonicalKey || team.displayName;
+  }
+
   function hexToRgba(hex, alpha) {
     const clean = hex.replace("#", "");
     const bigint = parseInt(clean.length === 3 ? clean.repeat(2) : clean, 16);
@@ -1183,8 +1237,8 @@
   function applyTeamColors(teamA, teamB) {
     if (!state.chart) return;
     const [dsA, dsB] = state.chart.data.datasets;
-    const colorA = teamColor(teamA.logoKey || teamA.displayName);
-    const colorB = teamColor(teamB.logoKey || teamB.displayName);
+    const colorA = teamColor(teamColorKey(teamA));
+    const colorB = teamColor(teamColorKey(teamB));
 
     dsA.borderColor = colorA;
     dsA.backgroundColor = hexToRgba(colorA, 0.25);
@@ -1270,6 +1324,27 @@
 
     el.style.backgroundImage =
       "linear-gradient(135deg, rgba(96,165,250,0.2), rgba(168,85,247,0.2))";
+  }
+
+  function updatePossessionIndicators(teamA, teamB, possessionRaw) {
+    const aContainer = els.teamAPossession?.closest(".team");
+    const bContainer = els.teamBPossession?.closest(".team");
+    const possessionKey = canonicalTeamKey(possessionRaw) || normalizeTeamKey(possessionRaw);
+    const teamAKey =
+      canonicalTeamKey(teamA.canonicalKey || teamA.logoKey || teamA.displayName) ||
+      normalizeTeamKey(teamA.displayName);
+    const teamBKey =
+      canonicalTeamKey(teamB.canonicalKey || teamB.logoKey || teamB.displayName) ||
+      normalizeTeamKey(teamB.displayName);
+
+    const teamAHasBall = !!(possessionKey && teamAKey && possessionKey === teamAKey);
+    const teamBHasBall = !!(possessionKey && teamBKey && possessionKey === teamBKey);
+
+    els.teamAPossession && (els.teamAPossession.style.opacity = teamAHasBall ? "1" : "");
+    els.teamBPossession && (els.teamBPossession.style.opacity = teamBHasBall ? "1" : "");
+
+    aContainer?.classList.toggle("team--has-ball", teamAHasBall);
+    bContainer?.classList.toggle("team--has-ball", teamBHasBall);
   }
 
   function buildSampleMatchup() {
