@@ -1,16 +1,10 @@
-/* app.js - TFL Live Monitor
-   Requires:
-   - d3 v7 (csvParse)
-   - chart.js v4 (Chart global)
-*/
-
 (() => {
-  // ✅ Put your real published CSV URLs here:
-  // Matchup (your sheet with: Update #, Minutes Left, Team A, Team B, Team A Win Probability, Team A has Ball..., Quarter, Down, Distance, Yards to Goal, Team A Point, Team B Point)
+  // =======================
+  // CONFIG
+  // =======================
   const MATCHUP_CSV_URL =
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv";
 
-  // MVP (your odds output sheet)
   const MVP_CSV_URL =
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQp0jxVIwA59hH031QxJFBsXdQVIi7fNdPS5Ra2w1lK2UYA08rC0moSSqoKPSFL8BRZFh_hC4cO8ymk/pub?output=csv";
 
@@ -23,6 +17,7 @@
   const MOMENTUM_THRESHOLD = 0.025;
   const BIG_SWING_THRESHOLD = 0.12;
 
+  // Try to be forgiving about team naming and file casing
   const LOGO_MAP = {
     cards: "Cards.png",
     cardinals: "Cards.png",
@@ -47,6 +42,9 @@
     "new york giants": "giants.png",
   };
 
+  // =======================
+  // STATE / DOM
+  // =======================
   const state = {
     chart: null,
     baseline: null,
@@ -55,17 +53,18 @@
     sort: { key: "mvpScore", dir: "desc" },
     lastMvpRecords: [],
     sortHandlersAttached: false,
+    logoExistCache: new Map(), // filename -> boolean
   };
 
   const els = {};
 
   document.addEventListener("DOMContentLoaded", () => {
     if (typeof d3 === "undefined") {
-      console.error("d3 is not loaded. Make sure d3 script is included before app.js");
+      console.error("d3 not found. Make sure d3 is loaded before app.js");
       return;
     }
     if (typeof Chart === "undefined") {
-      console.error("Chart.js is not loaded. Make sure chart.js script is included before app.js");
+      console.error("Chart.js not found. Make sure chart.js is loaded before app.js");
       return;
     }
 
@@ -73,9 +72,9 @@
     initTabs();
     initChart();
 
-    // Log so you can VERIFY which URLs are actually running in the browser
-    console.info("[TFL] MATCHUP_CSV_URL:", MATCHUP_CSV_URL);
-    console.info("[TFL] MVP_CSV_URL:", MVP_CSV_URL);
+    // Debug: proves what your deployed JS is using
+    console.info("[TFL] MATCHUP_CSV_URL =", MATCHUP_CSV_URL);
+    console.info("[TFL] MVP_CSV_URL =", MVP_CSV_URL);
 
     fetchMatchup();
     fetchMvp();
@@ -150,8 +149,7 @@
     );
 
     window.addEventListener("hashchange", () => {
-      const tab = window.location.hash.replace("#", "") || "win";
-      setTab(tab);
+      setTab(window.location.hash.replace("#", "") || "win");
     });
 
     setTab(window.location.hash.replace("#", "") || "win");
@@ -161,13 +159,13 @@
     const canvas = document.getElementById("winProbChart");
     if (!canvas) return;
 
-    const ctx2d = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d");
 
-    const gradientA = ctx2d.createLinearGradient(0, 0, 0, 320);
+    const gradientA = ctx.createLinearGradient(0, 0, 0, 320);
     gradientA.addColorStop(0, "rgba(96,165,250,0.4)");
     gradientA.addColorStop(1, "rgba(96,165,250,0.05)");
 
-    const gradientB = ctx2d.createLinearGradient(0, 0, 0, 320);
+    const gradientB = ctx.createLinearGradient(0, 0, 0, 320);
     gradientB.addColorStop(0, "rgba(168,85,247,0.4)");
     gradientB.addColorStop(1, "rgba(168,85,247,0.05)");
 
@@ -271,21 +269,32 @@
     });
   }
 
+  // =======================
+  // NETWORK
+  // =======================
   async function fetchText(url) {
-    // cache buster to prevent stale CSV/script caching
     const u = new URL(url, window.location.href);
+    // cache buster (safe for Google publish links)
     u.searchParams.set("_cb", Date.now().toString());
 
-    const res = await fetch(u.toString(), { cache: "no-store" });
+    const res = await fetch(u.toString(), {
+      method: "GET",
+      cache: "no-store",
+      redirect: "follow",
+      mode: "cors",
+    });
+
     if (!res.ok) {
-      // Show better diagnostics than just "Failed"
       throw new Error(`HTTP ${res.status} ${res.statusText} for ${u.toString()}`);
     }
+
     const text = await res.text();
 
-    // Google sometimes returns an HTML "access denied" or "not published" page
+    // Published CSV should NOT be HTML
     if (/<html/i.test(text)) {
-      throw new Error(`Got HTML instead of CSV for ${u.toString()} (sheet may not be published/public)`);
+      throw new Error(
+        `Got HTML instead of CSV for ${u.toString()} (sheet probably not published to web, or access blocked)`
+      );
     }
 
     return text;
@@ -302,16 +311,11 @@
       const parsed = parseMatchupCSV(text);
       if (!parsed.snapshots.length) throw new Error("No matchup rows parsed");
       renderMatchup(parsed);
-      state.matchupLoading = false;
       setLoading(els.winLoading, false);
     } catch (err) {
-      console.error("[matchup] ", err);
-      toggleError(els.winError, true);
-
-      // Always show something so the app doesn't look dead
-      const fallback = buildSampleMatchup();
-      renderMatchup(fallback);
-      state.matchupLoading = false;
+      console.error("[matchup]", err);
+      showError(els.winError, `Matchup feed error: ${err.message}`);
+      renderMatchup(buildSampleMatchup()); // keep app alive
       setLoading(els.winLoading, false);
     }
   }
@@ -328,29 +332,27 @@
       state.lastMvpRecords = records;
       renderMvp(records);
       setLoading(els.mvpLoading, false);
-      state.mvpLoading = false;
     } catch (err) {
-      console.error("[mvp] ", err);
-      toggleError(els.mvpError, true);
-
-      const fallback = buildSampleMvp();
-      state.lastMvpRecords = fallback;
-      renderMvp(fallback);
-      state.mvpLoading = false;
+      console.error("[mvp]", err);
+      showError(els.mvpError, `MVP feed error: ${err.message}`);
+      state.lastMvpRecords = buildSampleMvp();
+      renderMvp(state.lastMvpRecords);
       setLoading(els.mvpLoading, false);
     }
   }
 
-  // Matchup parser designed around your sheet headers
+  // =======================
+  // PARSING
+  // =======================
   function parseMatchupCSV(text) {
     const rows = d3.csvParse(text);
     if (!rows || !rows.length) {
       return { snapshots: [], teamA: "Team A", teamB: "Team B", teams: [], baseline: null };
     }
 
-    const normRow = (row) => {
+    const norm = (obj) => {
       const out = {};
-      for (const [k, v] of Object.entries(row)) out[String(k).trim().toLowerCase()] = v;
+      for (const [k, v] of Object.entries(obj)) out[String(k).trim().toLowerCase()] = v;
       return out;
     };
 
@@ -377,22 +379,22 @@
       return clampProb(p);
     };
 
-    const last = normRow(rows[rows.length - 1]);
-
-    const teamA = String(pick(last, ["away", "team a"]) || "Team A").trim();
-    const teamB = String(pick(last, ["home", "team b"]) || "Team B").trim();
+    const last = norm(rows[rows.length - 1]);
+    const teamA = String(pick(last, ["team a", "away"]) || "Team A").trim();
+    const teamB = String(pick(last, ["team b", "home"]) || "Team B").trim();
 
     const snapshots = rows.map((row, i) => {
-      const r = normRow(row);
+      const r = norm(row);
 
       const update = String(pick(r, ["update #", "update"]) || `U${i + 1}`).trim();
       const minuteLeft = parseMinutesLeft(pick(r, ["minutes left", "minutes_left", "ml"]));
 
-      // Your sheet: "Team A Win Probability"
-      const probA = parseProb(
-        pick(r, ["team a win probability", "away win probability", "team a win prob", "away wp"])
-      );
+      // YOUR SHEET: Team A Win Probability is the primary one
+      const probA = parseProb(pick(r, ["team a win probability", "away win probability", "team a win prob"]));
       const probB = probA != null ? clampProb(1 - probA) : null;
+
+      const scoreA = parseNumber(pick(r, ["team a point", "team a points"])) ?? 0;
+      const scoreB = parseNumber(pick(r, ["team b point", "team b points"])) ?? 0;
 
       const hasBall = parseNumber(pick(r, ["team a has ball (1=yes, 0=no)", "team a has ball"]));
       const possession = hasBall == null ? "" : hasBall === 1 ? teamA : teamB;
@@ -400,18 +402,13 @@
       const quarter = String(pick(r, ["quarter", "qtr"]) || "").trim();
       const down = String(pick(r, ["down"]) || "").trim();
       const distance = String(pick(r, ["distance", "dist"]) || "").trim();
-      const ytg = String(pick(r, ["yards to goal", "ytg", "to-go", "to go"]) || "").trim();
+      const ytg = String(pick(r, ["yards to goal", "ytg"]) || "").trim();
 
-      const scoreA = parseNumber(pick(r, ["team a point", "team a points", "away point", "away points"])) ?? 0;
-      const scoreB = parseNumber(pick(r, ["team b point", "team b points", "home point", "home points"])) ?? 0;
-
-      // Optional baseline/pregame
-      const pregame = parseProb(pick(r, ["pregame", "baseline", "pregame baseline"]));
+      const pregame = parseProb(pick(r, ["pregame", "baseline"])) ?? null;
 
       return {
         update,
         minuteLeft,
-        // In your UI code, "homeSeries" is based on winProbHome
         winProbAway: probA,
         winProbHome: probB,
         scoreA,
@@ -431,14 +428,60 @@
     return { snapshots, teamA, teamB, teams, baseline };
   }
 
+  function parseMvpCSV(text) {
+    const rows = d3.csvParse(text);
+    if (!rows || !rows.length) return [];
+
+    const norm = (obj) => {
+      const out = {};
+      for (const [k, v] of Object.entries(obj)) out[String(k).trim().toLowerCase()] = v;
+      return out;
+    };
+
+    const pick = (r, keys) => {
+      for (const k of keys) {
+        const v = r[k];
+        if (v != null && String(v).trim() !== "") return v;
+      }
+      return null;
+    };
+
+    return rows
+      .map((row) => {
+        const r = norm(row);
+        return {
+          player: String(pick(r, ["player", "name"]) || "Player").trim(),
+          team: String(pick(r, ["team"]) || "Team").trim(),
+          winPct: parseNumber(pick(r, ["win_pct", "win%", "win"])) || 0,
+          mvpScore: parseNumber(pick(r, ["mvp_score", "score", "mvp"])) || 0,
+          impliedWithVig: parseNumber(pick(r, ["implied_with_vig", "implied", "with_vig"])) ?? null,
+          impliedNoVig: parseNumber(pick(r, ["no_vig", "implied_no_vig", "without_vig"])) ?? null,
+          decimalOdds: String(pick(r, ["decimal", "decimal_odds"]) || "").trim(),
+          americanOdds: String(pick(r, ["american", "american_odds"]) || "").trim(),
+          pass: parseNumber(pick(r, ["pass"])) ?? null,
+          rush: parseNumber(pick(r, ["rush"])) ?? null,
+          recv: parseNumber(pick(r, ["recv"])) ?? null,
+          def: parseNumber(pick(r, ["def"])) ?? null,
+          win: parseNumber(pick(r, ["win_score", "win_component"])) ?? null,
+          record: String(pick(r, ["record"]) || "").trim(),
+        };
+      })
+      .filter((r) => r.player);
+  }
+
+  // =======================
+  // RENDERING
+  // =======================
   function renderMatchup({ snapshots, teamA, teamB, teams, baseline }) {
     if (!snapshots.length) return;
 
-    const labels = snapshots.map((s) => (s.minuteLeft ?? s.update));
+    const labels = snapshots.map((s) => s.minuteLeft ?? s.update);
+
     const home = smoothSeries(snapshots.map((s) => toPct(s.winProbHome)));
     const away = smoothSeries(snapshots.map((s) => toPct(s.winProbAway)));
 
-    state.baseline = baseline != null ? baseline : null;
+    state.baseline = baseline;
+
     if (els.baselineValue) els.baselineValue.textContent = baseline != null ? `${(baseline * 100).toFixed(1)}%` : "—";
     if (els.pregameTag) els.pregameTag.textContent = baseline != null ? `Pregame baseline: ${(baseline * 100).toFixed(1)}%` : "Pregame baseline: —";
 
@@ -446,8 +489,8 @@
 
     const latest = snapshots[snapshots.length - 1];
 
+    const isFinal = latest.minuteLeft != null && latest.minuteLeft <= 0;
     if (els.gameStatus) {
-      const isFinal = latest.minuteLeft != null && latest.minuteLeft <= 0;
       els.gameStatus.textContent = isFinal ? "Final" : "Live";
       els.gameStatus.classList.toggle("badge--ghost", isFinal);
     }
@@ -471,205 +514,29 @@
     setLogo(els.teamALogo, teamA);
     setLogo(els.teamBLogo, teamB);
 
-    const metrics = analyzeGame(home, labels, baseline);
+    const metrics = analyzeGame(home, labels);
     if (els.momentumValue) els.momentumValue.textContent = metrics.momentum;
     if (els.swingValue) els.swingValue.textContent = metrics.bigSwing;
     if (els.clutchValue) els.clutchValue.textContent = metrics.clutch;
 
     renderPills(metrics, baseline);
 
-    setLoading(els.winLoading, false);
     toggleError(els.winError, false);
+    setLoading(els.winLoading, false);
   }
 
   function updateChart(labels, home, away, teamA, teamB) {
     if (!state.chart) return;
-    state.chart.data.labels = labels;
 
-    // dataset[0] shows away, dataset[1] shows home (matches your earlier layout)
+    state.chart.data.labels = labels;
     state.chart.data.datasets[0].label = teamA;
     state.chart.data.datasets[1].label = teamB;
 
+    // Force numeric/null only -> prevents Chart weirdness
     state.chart.data.datasets[0].data = away.map(forceNumberOrNull);
     state.chart.data.datasets[1].data = home.map(forceNumberOrNull);
 
     state.chart.update("none");
-  }
-
-  function analyzeGame(homeSeries, labels, baseline) {
-    const filtered = homeSeries.filter((v) => v != null && !Number.isNaN(v));
-    const recent = filtered.slice(-3);
-    const delta = recent.length >= 2 ? recent[recent.length - 1] - recent[0] : 0;
-
-    const momentum =
-      Math.abs(delta) >= MOMENTUM_THRESHOLD * 100 ? `${delta >= 0 ? "+" : ""}${delta.toFixed(1)} pts` : "Stable";
-
-    const bigSwing = computeBigSwing(filtered);
-    const clutch = computeClutch(filtered, labels);
-
-    renderBaselinePill(baseline);
-
-    return { momentum, bigSwing, clutch };
-  }
-
-  function computeBigSwing(series) {
-    let swing = 0;
-    for (let i = 1; i < series.length; i++) {
-      const a = series[i - 1];
-      const b = series[i];
-      if (a == null || b == null) continue;
-      swing = Math.max(swing, Math.abs(b - a));
-    }
-    return swing >= BIG_SWING_THRESHOLD * 100 ? `${swing.toFixed(1)} pts` : "—";
-  }
-
-  function computeClutch(series, labels) {
-    if (!series.length) return "—";
-    const lastLabel = labels[labels.length - 1];
-    const last = series[series.length - 1];
-    if (last == null) return "—";
-    const isClutch =
-      typeof lastLabel === "number"
-        ? lastLabel <= 5 && last >= 35 && last <= 65
-        : last >= 35 && last <= 65;
-    return isClutch ? "In clutch" : "—";
-  }
-
-  function renderPills(metrics, baseline) {
-    if (!els.pillRow) return;
-    els.pillRow.innerHTML = "";
-
-    const pills = [];
-    if (baseline != null) pills.push({ label: "Pregame", value: `${(baseline * 100).toFixed(1)}%`, tone: "accent" });
-    if (metrics.momentum !== "Stable") pills.push({ label: "Momentum", value: metrics.momentum, tone: "accent" });
-    if (metrics.bigSwing !== "—") pills.push({ label: "Big swing", value: metrics.bigSwing, tone: "warning" });
-    if (metrics.clutch === "In clutch") pills.push({ label: "Clutch time", value: "Tight window", tone: "danger" });
-
-    if (!pills.length) pills.push({ label: "Calm", value: "No major swings", tone: "ghost" });
-
-    pills.forEach((pill) => {
-      const div = document.createElement("div");
-      div.className = `pill ${pill.tone ? `pill--${pill.tone}` : ""}`.trim();
-      div.textContent = `${pill.label}: ${pill.value}`;
-      els.pillRow.appendChild(div);
-    });
-  }
-
-  function renderBaselinePill(baseline) {
-    if (!els.pregameTag) return;
-    if (baseline == null) return;
-    els.pregameTag.textContent = `Pregame baseline: ${(baseline * 100).toFixed(1)}%`;
-  }
-
-  function smoothSeries(series) {
-    // Ensure numbers/null only
-    const cleaned = series.map(forceNumberOrNull);
-    const values = cleaned.filter((v) => v != null);
-    if (!values.length) return cleaned.map(() => null);
-
-    const pad = Math.floor(SMOOTH_WINDOW / 2);
-    const first = values[0];
-    const last = values[values.length - 1];
-
-    const padded = [];
-    for (let i = 0; i < pad; i++) padded.push(first);
-    padded.push(...values);
-    for (let i = 0; i < pad; i++) padded.push(last);
-
-    const smoothed = [];
-    for (let i = 0; i < values.length; i++) {
-      const slice = padded.slice(i, i + SMOOTH_WINDOW);
-      const avg = slice.reduce((sum, v) => sum + v, 0) / slice.length;
-      smoothed.push(parseFloat(avg.toFixed(2)));
-    }
-
-    let idx = 0;
-    return cleaned.map((v) => (v == null ? null : smoothed[idx++]));
-  }
-
-  function clampProb(value) {
-    if (value == null || Number.isNaN(value)) return null;
-    const normalized = value > 1 ? value / 100 : value;
-    return Math.min(MAX_DISPLAY_PROB, Math.max(MIN_DISPLAY_PROB, normalized));
-  }
-
-  function toPct(value) {
-    if (value == null) return null;
-    // percent scale 0..100 with 1 decimal
-    return Math.round(value * 1000) / 10;
-  }
-
-  function parseNumber(val) {
-    if (val == null) return null;
-    const num = parseFloat(String(val).replace(/[^0-9.-]/g, ""));
-    return Number.isNaN(num) ? null : num;
-  }
-
-  function forceNumberOrNull(v) {
-    if (v == null) return null;
-    const n = typeof v === "number" ? v : parseFloat(v);
-    return Number.isNaN(n) ? null : n;
-  }
-
-  function setLogo(el, name) {
-    if (!el) return;
-    const key = (name || "").toLowerCase().trim();
-    const file = LOGO_MAP[key];
-    if (file) {
-      el.style.backgroundImage = `url(${logoPath(file)})`;
-    } else {
-      el.style.backgroundImage = "linear-gradient(135deg, rgba(96,165,250,0.2), rgba(168,85,247,0.2))";
-    }
-  }
-
-  function logoPath(file) {
-    // logos folder beside index.html
-    return `logos/${file}`;
-  }
-
-  // MVP CSV parsing (robust against header casing)
-  function parseMvpCSV(text) {
-    const rows = d3.csvParse(text);
-    if (!rows || !rows.length) return [];
-
-    const normRow = (row) => {
-      const out = {};
-      for (const [k, v] of Object.entries(row)) out[String(k).trim().toLowerCase()] = v;
-      return out;
-    };
-
-    const pick = (r, keys) => {
-      for (const k of keys) {
-        const v = r[k];
-        if (v != null && String(v).trim() !== "") return v;
-      }
-      return null;
-    };
-
-    return rows
-      .map((row) => {
-        const r = normRow(row);
-        const player = String(pick(r, ["player", "name"]) || "").trim();
-        const team = String(pick(r, ["team"]) || "").trim();
-
-        return {
-          player: player || "Player",
-          team: team || "Team",
-          winPct: parseNumber(pick(r, ["win_pct", "win%", "win"])) || 0,
-          mvpScore: parseNumber(pick(r, ["mvp_score", "score", "mvp"])) || 0,
-          impliedWithVig: parseNumber(pick(r, ["implied_with_vig", "implied", "with_vig"])) ?? null,
-          impliedNoVig: parseNumber(pick(r, ["no_vig", "implied_no_vig", "without_vig"])) ?? null,
-          decimalOdds: String(pick(r, ["decimal", "decimal_odds"]) || "").trim(),
-          americanOdds: String(pick(r, ["american", "american_odds"]) || "").trim(),
-          pass: parseNumber(pick(r, ["pass"])) ?? null,
-          rush: parseNumber(pick(r, ["rush"])) ?? null,
-          recv: parseNumber(pick(r, ["recv"])) ?? null,
-          def: parseNumber(pick(r, ["def"])) ?? null,
-          win: parseNumber(pick(r, ["win_score", "win_component"])) ?? null,
-          record: String(pick(r, ["record"]) || "").trim(),
-        };
-      })
-      .filter((r) => r.player);
   }
 
   function renderMvp(records) {
@@ -677,10 +544,10 @@
 
     const sorted = [...records].sort((a, b) => {
       const dir = state.sort.dir === "asc" ? 1 : -1;
-      const aVal = a[state.sort.key] ?? 0;
-      const bVal = b[state.sort.key] ?? 0;
-      if (aVal === bVal) return 0;
-      return (aVal > bVal ? 1 : -1) * dir;
+      const av = a[state.sort.key] ?? 0;
+      const bv = b[state.sort.key] ?? 0;
+      if (av === bv) return 0;
+      return (av > bv ? 1 : -1) * dir;
     });
 
     els.mvpTableBody.innerHTML = "";
@@ -721,7 +588,7 @@
         </td>
         <td>${row.decimalOdds || "—"}</td>
         <td>${row.americanOdds || "—"}</td>
-        <td><button class="expand-btn" type="button" aria-label="Toggle details">View</button></td>
+        <td><button class="expand-btn" type="button">View</button></td>
       `;
 
       const detail = document.createElement("tr");
@@ -747,6 +614,7 @@
     if (els.mvpStatus) els.mvpStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
 
     attachSortHandlersOnce();
+    toggleError(els.mvpError, false);
   }
 
   function attachSortHandlersOnce() {
@@ -764,11 +632,122 @@
           state.sort.key = key;
           state.sort.dir = "desc";
         }
-
-        // Re-render using last records (don’t refetch just to sort)
         renderMvp(state.lastMvpRecords || []);
       });
     });
+  }
+
+  // =======================
+  // METRICS
+  // =======================
+  function analyzeGame(homeSeries, labels) {
+    const filtered = homeSeries.filter((v) => v != null && !Number.isNaN(v));
+    const recent = filtered.slice(-3);
+    const delta = recent.length >= 2 ? recent[recent.length - 1] - recent[0] : 0;
+
+    const momentum =
+      Math.abs(delta) >= MOMENTUM_THRESHOLD * 100 ? `${delta >= 0 ? "+" : ""}${delta.toFixed(1)} pts` : "Stable";
+
+    const bigSwing = computeBigSwing(filtered);
+    const clutch = computeClutch(filtered, labels);
+
+    return { momentum, bigSwing, clutch };
+  }
+
+  function computeBigSwing(series) {
+    let swing = 0;
+    for (let i = 1; i < series.length; i++) {
+      const a = series[i - 1];
+      const b = series[i];
+      if (a == null || b == null) continue;
+      swing = Math.max(swing, Math.abs(b - a));
+    }
+    return swing >= BIG_SWING_THRESHOLD * 100 ? `${swing.toFixed(1)} pts` : "—";
+  }
+
+  function computeClutch(series, labels) {
+    if (!series.length) return "—";
+    const lastLabel = labels[labels.length - 1];
+    const last = series[series.length - 1];
+    if (last == null) return "—";
+
+    const isClutch =
+      typeof lastLabel === "number"
+        ? lastLabel <= 5 && last >= 35 && last <= 65
+        : last >= 35 && last <= 65;
+
+    return isClutch ? "In clutch" : "—";
+  }
+
+  function renderPills(metrics, baseline) {
+    if (!els.pillRow) return;
+    els.pillRow.innerHTML = "";
+
+    const pills = [];
+    if (baseline != null) pills.push({ label: "Pregame", value: `${(baseline * 100).toFixed(1)}%`, tone: "accent" });
+    if (metrics.momentum !== "Stable") pills.push({ label: "Momentum", value: metrics.momentum, tone: "accent" });
+    if (metrics.bigSwing !== "—") pills.push({ label: "Big swing", value: metrics.bigSwing, tone: "warning" });
+    if (metrics.clutch === "In clutch") pills.push({ label: "Clutch time", value: "Tight window", tone: "danger" });
+
+    if (!pills.length) pills.push({ label: "Calm", value: "No major swings", tone: "ghost" });
+
+    pills.forEach((pill) => {
+      const div = document.createElement("div");
+      div.className = `pill ${pill.tone ? `pill--${pill.tone}` : ""}`.trim();
+      div.textContent = `${pill.label}: ${pill.value}`;
+      els.pillRow.appendChild(div);
+    });
+  }
+
+  // =======================
+  // HELPERS
+  // =======================
+  function smoothSeries(series) {
+    const cleaned = series.map(forceNumberOrNull);
+    const values = cleaned.filter((v) => v != null);
+    if (!values.length) return cleaned.map(() => null);
+
+    const pad = Math.floor(SMOOTH_WINDOW / 2);
+    const first = values[0];
+    const last = values[values.length - 1];
+
+    const padded = [];
+    for (let i = 0; i < pad; i++) padded.push(first);
+    padded.push(...values);
+    for (let i = 0; i < pad; i++) padded.push(last);
+
+    const smoothed = [];
+    for (let i = 0; i < values.length; i++) {
+      const slice = padded.slice(i, i + SMOOTH_WINDOW);
+      const avg = slice.reduce((sum, v) => sum + v, 0) / slice.length;
+      smoothed.push(parseFloat(avg.toFixed(2)));
+    }
+
+    let idx = 0;
+    return cleaned.map((v) => (v == null ? null : smoothed[idx++]));
+  }
+
+  function clampProb(value) {
+    if (value == null || Number.isNaN(value)) return null;
+    const normalized = value > 1 ? value / 100 : value;
+    return Math.min(MAX_DISPLAY_PROB, Math.max(MIN_DISPLAY_PROB, normalized));
+  }
+
+  function toPct(value) {
+    if (value == null) return null;
+    return Math.round(value * 1000) / 10; // 1 decimal
+  }
+
+  function parseNumber(val) {
+    if (val == null) return null;
+    const num = parseFloat(String(val).replace(/[^0-9.-]/g, ""));
+    return Number.isNaN(num) ? null : num;
+  }
+
+  function forceNumberOrNull(v) {
+    if (v == null) return null;
+    const n = typeof v === "number" ? v : parseFloat(v);
+    return Number.isNaN(n) ? null : n;
   }
 
   function formatPct(value) {
@@ -811,6 +790,68 @@
     el.hidden = !show;
   }
 
+  function showError(el, msg) {
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  function logoPath(file) {
+    // On GitHub Pages, this resolves relative to repo path correctly
+    return `logos/${file}`;
+  }
+
+  async function logoExists(file) {
+    // Same-origin check (works on GitHub Pages); avoids spamming broken image 404s
+    if (state.logoExistCache.has(file)) return state.logoExistCache.get(file);
+
+    try {
+      const res = await fetch(logoPath(file), { method: "HEAD", cache: "no-store" });
+      const ok = res.ok;
+      state.logoExistCache.set(file, ok);
+      return ok;
+    } catch {
+      state.logoExistCache.set(file, false);
+      return false;
+    }
+  }
+
+  function variants(file) {
+    // Try common casing variations
+    const base = file;
+    const lower = file.toLowerCase();
+    const upperFirst =
+      file.length > 0 ? file[0].toUpperCase() + file.slice(1) : file;
+
+    // Also try TitleCase for names like sanfran.png -> Sanfran.png
+    const titleish = lower.replace(/(^|\/)([a-z])/g, (m, p1, p2) => p1 + p2.toUpperCase());
+
+    return Array.from(new Set([base, lower, upperFirst, titleish]));
+  }
+
+  async function setLogo(el, teamName) {
+    if (!el) return;
+    const key = (teamName || "").toLowerCase().trim();
+    const mapped = LOGO_MAP[key];
+
+    if (!mapped) {
+      el.style.backgroundImage =
+        "linear-gradient(135deg, rgba(96,165,250,0.2), rgba(168,85,247,0.2))";
+      return;
+    }
+
+    for (const candidate of variants(mapped)) {
+      // eslint-disable-next-line no-await-in-loop
+      if (await logoExists(candidate)) {
+        el.style.backgroundImage = `url(${logoPath(candidate)})`;
+        return;
+      }
+    }
+
+    el.style.backgroundImage =
+      "linear-gradient(135deg, rgba(96,165,250,0.2), rgba(168,85,247,0.2))";
+  }
+
   function buildSampleMatchup() {
     const samples = [];
     const pregame = 0.62;
@@ -823,8 +864,8 @@
       samples.push({
         update: `U${12 - i + 1}`,
         minuteLeft: i,
-        winProbHome: current / 100,
-        winProbAway: 1 - current / 100,
+        winProbHome: (100 - current) / 100,
+        winProbAway: current / 100,
         scoreA: Math.max(0, Math.round((12 - i) / 3)),
         scoreB: Math.max(0, Math.round((12 - i) / 2)),
         possession: (12 - i) % 2 === 0 ? "Home" : "Away",
