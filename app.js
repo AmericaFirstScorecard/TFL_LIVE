@@ -80,6 +80,9 @@
 
   const MVP_WEIGHTS = { pass: 2.0, rush: 1.0, recv: 1.0, def: 1.0, wins: 2 };
 
+  // Bracket copy for latest semi result
+  const SEMI_ONE_SCORE = "58-45";
+
   // =======================
   // STATE / DOM
   // =======================
@@ -1153,6 +1156,105 @@
     state.chart.update();
   }
 
+  function buildPlayerStatLines(player) {
+    const passParts = [];
+    const rating = formatScore(player.passRating);
+    if (rating !== "—") appendIfValue(passParts, `PR ${rating}`);
+    const compPct = formatPct(player.compPct);
+    if (compPct !== "—") appendIfValue(passParts, compPct);
+    const passYards = formatCount(player.yards);
+    if (passYards !== "—") appendIfValue(passParts, `${passYards} yds`);
+    if (player.passTd != null || player.interceptions != null)
+      appendIfValue(passParts, `${player.passTd ?? 0}/${player.interceptions ?? 0} TD/INT`);
+    if (player.completions != null || player.attempts != null)
+      appendIfValue(passParts, `${formatCount(player.completions)} / ${formatCount(player.attempts)} C/A`);
+
+    const rushParts = [];
+    const rushYds = formatCount(player.rushYards);
+    if (rushYds !== "—") appendIfValue(rushParts, `${rushYds} yds`);
+    const rushTd = formatCount(player.rushTd);
+    if (rushTd !== "—") appendIfValue(rushParts, `${rushTd} TD`);
+    const returnTd = formatCount(player.returnTd);
+    if (returnTd !== "—") appendIfValue(rushParts, `${returnTd} RET TD`);
+    const totalTd = formatCount(player.totalTd);
+    if (totalTd !== "—") appendIfValue(rushParts, `${totalTd} Total TD`);
+
+    const recvParts = [];
+    const recvYds = formatCount(player.recvYards);
+    if (recvYds !== "—") appendIfValue(recvParts, `${recvYds} yds`);
+    const recvTd = formatCount(player.recvTd);
+    if (recvTd !== "—") appendIfValue(recvParts, `${recvTd} TD`);
+    if (player.catches != null || player.targets != null)
+      appendIfValue(recvParts, `${formatCount(player.catches)} / ${formatCount(player.targets)} C/T`);
+
+    const defParts = [];
+    const tackles = formatCount(player.tackles);
+    if (tackles !== "—") appendIfValue(defParts, `${tackles} TAK`);
+    const sacks = formatCount(player.sacks);
+    if (sacks !== "—") appendIfValue(defParts, `${sacks} SCK`);
+    const defInt = formatCount(player.defInt);
+    if (defInt !== "—") appendIfValue(defParts, `${defInt} INT`);
+    const defTd = formatCount(player.defTd);
+    if (defTd !== "—") appendIfValue(defParts, `${defTd} TD`);
+
+    const totals = [];
+    const winPct = formatPct(player.winPct);
+    if (winPct !== "—") appendIfValue(totals, `Win% ${winPct}`);
+    const wins = formatCount(player.wins);
+    if (wins !== "—") appendIfValue(totals, `${wins} Wins`);
+
+    return [
+      { label: "Pass", value: joinStatParts(passParts) },
+      { label: "Rush", value: joinStatParts(rushParts) },
+      { label: "Rec", value: joinStatParts(recvParts) },
+      { label: "Def", value: joinStatParts(defParts) },
+      ...(totals.length ? [{ label: "Totals", value: joinStatParts(totals) }] : []),
+    ].filter((line) => line.value && line.value !== "—");
+  }
+
+  function buildPlayerMetrics(player) {
+    return [
+      { label: "Pass rating", value: formatScore(player.passRating) },
+      { label: "Comp%", value: formatPct(player.compPct) },
+      { label: "Comp / Att", value: formatCountPair(player.completions, player.attempts) },
+      { label: "Pass yards", value: formatCount(player.yards) },
+      {
+        label: "TD / INT",
+        value:
+          player.passTd != null || player.interceptions != null
+            ? `${formatCount(player.passTd)} / ${formatCount(player.interceptions)}`
+            : "—",
+      },
+      { label: "Rush yds", value: formatCount(player.rushYards) },
+      { label: "Rush TD", value: formatCount(player.rushTd) },
+      { label: "Return TD", value: formatCount(player.returnTd) },
+      { label: "Total TD", value: formatCount(player.totalTd) },
+      { label: "Rec yds", value: formatCount(player.recvYards) },
+      { label: "Rec TD", value: formatCount(player.recvTd) },
+      { label: "Catches / Targets", value: formatCountPair(player.catches, player.targets) },
+      { label: "Tackles", value: formatCount(player.tackles) },
+      { label: "Sacks", value: formatCount(player.sacks) },
+      { label: "Def INT", value: formatCount(player.defInt) },
+      { label: "Def TD", value: formatCount(player.defTd) },
+      { label: "Def score", value: formatScore(player.defScore) },
+      { label: "Wins", value: formatCount(player.wins) },
+      { label: "Win%", value: formatPct(player.winPct) },
+      { label: "MVP Score", value: formatScore(player.mvpScore) },
+    ];
+  }
+
+  function appendIfValue(list, value) {
+    if (value == null) return;
+    const str = String(value);
+    if (str === "—" || str.trim() === "") return;
+    list.push(str);
+  }
+
+  function joinStatParts(parts) {
+    const clean = parts.filter(Boolean);
+    return clean.length ? clean.join(" • ") : "—";
+  }
+
   function renderMvp(records) {
     if (!els.mvpTableBody) return;
 
@@ -1182,9 +1284,19 @@
       const recordText = record ? formatRecord(record) : "";
       const tdInt =
         row.passTd != null || row.interceptions != null
-          ? `${row.passTd ?? 0} / ${row.interceptions ?? 0}`
+          ? `${row.passTd ?? 0}/${row.interceptions ?? 0}`
           : "—";
       const passRating = row.passRating != null ? formatScore(row.passRating) : "—";
+      const statLines = buildPlayerStatLines(row);
+      const statLinesHtml = (statLines.length ? statLines : [{ label: "Stats", value: "—" }])
+        .map(
+          (line) => `
+              <div class="stat-line">
+                <span class="stat-line__label">${line.label}</span>
+                <span class="stat-line__value">${line.value}</span>
+              </div>`
+        )
+        .join("");
 
       tr.innerHTML = `
         <td>
@@ -1207,6 +1319,11 @@
         <td>${passRating}</td>
         <td>${row.yards != null ? Number(row.yards).toLocaleString() : "—"}</td>
         <td>${tdInt}</td>
+        <td>
+          <div class="stat-lines">
+            ${statLinesHtml}
+          </div>
+        </td>
         <td><button class="expand-btn" type="button">View</button></td>
       `;
 
@@ -1362,10 +1479,14 @@
       const card = document.createElement("button");
       card.type = "button";
       card.className = "player-chip";
+      const statSummary = buildPlayerStatLines(player)
+        .map((line) => `${line.label}: ${line.value}`)
+        .join(" • ");
       card.innerHTML = `
         ${playerAvatar(player)}
         <div class="player-chip__body">
           <div class="player-chip__name">${escapeHtml(player.player)}</div>
+          <div class="player-chip__meta">${statSummary || "No stat line yet"}</div>
           <div class="player-chip__meta">MVP: ${formatScore(player.mvpScore)} • Win%: ${formatPct(player.winPct)}</div>
         </div>
       `;
@@ -1377,17 +1498,7 @@
 
   function renderPlayerDetail(player, teamInfo, standing) {
     if (!els.playerDetail) return;
-    const metrics = [
-      { label: "Pass rating", value: formatScore(player.passRating) },
-      { label: "Comp%", value: formatPct(player.compPct) },
-      { label: "Yards", value: player.yards != null ? Number(player.yards).toLocaleString() : "—" },
-      { label: "TD / INT", value: player.passTd != null || player.interceptions != null ? `${player.passTd ?? 0}/${player.interceptions ?? 0}` : "—" },
-      { label: "Rush yds", value: formatScore(player.rushYards) },
-      { label: "Rec yds", value: formatScore(player.recvYards) },
-      { label: "Targets", value: formatScore(player.targets) },
-      { label: "Def score", value: formatScore(player.defScore) },
-      { label: "Total TD", value: formatScore(player.totalTd) },
-    ];
+    const metrics = buildPlayerMetrics(player);
 
     const card = document.createElement("div");
     card.className = "player-detail-card";
@@ -1421,22 +1532,7 @@
     const teamInfo = resolveTeam(player.team);
     const standing = findTeamRecord(teamInfo.displayName, player.team);
 
-    const metrics = [
-      { label: "Pass rating", value: formatScore(player.passRating) },
-      { label: "Comp%", value: formatPct(player.compPct) },
-      {
-        label: "Completions / Att",
-        value: `${formatCount(player.completions)} / ${formatCount(player.attempts)}`,
-      },
-      { label: "Yards", value: player.yards != null ? Number(player.yards).toLocaleString() : "—" },
-      { label: "TD / INT", value: player.passTd != null || player.interceptions != null ? `${player.passTd ?? 0}/${player.interceptions ?? 0}` : "—" },
-      { label: "Rush yds", value: formatScore(player.rushYards) },
-      { label: "Rec yds", value: formatScore(player.recvYards) },
-      { label: "Targets", value: formatCount(player.targets) },
-      { label: "Def score", value: formatScore(player.defScore) },
-      { label: "Total TD", value: formatCount(player.totalTd) },
-      { label: "Wins", value: formatCount(player.wins) },
-    ];
+    const metrics = buildPlayerMetrics(player);
 
     const modal = document.createElement("div");
     modal.className = "player-modal";
@@ -1482,65 +1578,203 @@
 
     const seeds = buildSeeds(rows);
     const [seed1, seed2, seed3, seed4, seed5] = seeds;
+    const semiOneScore = seed1 && seed4 ? SEMI_ONE_SCORE : null;
+    const semiOneResult = formatSemiResult(seed1, seed4, semiOneScore);
 
     const bracketGrid = document.createElement("div");
     bracketGrid.className = "bracket__grid";
 
-    const wildcard = document.createElement("div");
-    wildcard.className = "bracket__round";
-    wildcard.innerHTML = `<div class="bracket__round-title">Wildcard</div>`;
-    wildcard.appendChild(buildMatchupCard(seed4, seed3, "Winner to Semi"));
+    const semiOne = buildSemiCard({
+      title: "Semifinal #1",
+      slot: "left",
+      topSeed: seed1,
+      lowerSeed: seed4,
+      winnerSeed: seed1 && seed4 ? seed1 : null,
+      score: semiOneScore,
+      description: semiOneResult || "Waiting for #1 vs #4 to populate",
+    });
 
-    const semi = document.createElement("div");
-    semi.className = "bracket__round";
-    semi.innerHTML = `<div class="bracket__round-title">Semifinal</div>`;
-    semi.appendChild(buildMatchupCard(seed2, null, "Faces Wildcard Winner", seed3 && seed4 ? "Wildcard Winner" : "Awaiting wildcard"));
+    const final = buildFinalCard({
+      title: "Tate Super Bowl",
+      advancedSeed: seed1,
+      awaitingLabel: seed2 && seed3 ? "Winner of Semifinal #2" : "Awaiting #2/#3 winner",
+      semiOneResult,
+    });
 
-    const final = document.createElement("div");
-    final.className = "bracket__round bracket__round--final";
-    final.innerHTML = `<div class="bracket__round-title">Tate Bowl</div>`;
-    final.appendChild(buildMatchupCard(seed1, null, "Plays winner of semifinal", seed2 ? "Semifinal Winner" : "Awaiting semi"));
+    const semiTwo = buildSemiCard({
+      title: "Semifinal #2",
+      slot: "right",
+      topSeed: seed2,
+      lowerSeed: seed3,
+      winnerSeed: null,
+      score: null,
+      description: seed2 && seed3 ? "Winner advances to Tate Bowl" : "Waiting for seeds #2 and #3",
+    });
 
-    const eliminated = document.createElement("div");
-    eliminated.className = "bracket__eliminated";
-    eliminated.textContent = seed5 ? `Seed ${seed5.seed} (${resolveTeam(seed5.team).displayName}) is eliminated` : "Waiting on updated seeds…";
-
-    bracketGrid.appendChild(wildcard);
-    bracketGrid.appendChild(semi);
+    bracketGrid.appendChild(semiOne);
     bracketGrid.appendChild(final);
+    bracketGrid.appendChild(semiTwo);
     els.bracketDiagram.appendChild(bracketGrid);
-    els.bracketDiagram.appendChild(eliminated);
+
+    const footer = document.createElement("div");
+    footer.className = "bracket__footer";
+    footer.appendChild(buildEliminationNotice(seed5));
+    if (semiOneResult) footer.appendChild(buildSemiRecap(seed1, seed4, semiOneScore));
+    els.bracketDiagram.appendChild(footer);
 
     if (els.bracketStatus) els.bracketStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
     toggleError(els.bracketError, false);
   }
 
-  function buildMatchupCard(teamA, teamB, note, placeholder) {
+  function buildSemiCard({ title, slot, topSeed, lowerSeed, winnerSeed, score, description }) {
     const card = document.createElement("div");
-    card.className = "bracket__matchup";
+    card.className = "bracket__round bracket__round--semi";
+    if (slot === "left") card.classList.add("bracket__round--semi-left");
+    if (slot === "right") card.classList.add("bracket__round--semi-right");
+    card.innerHTML = `<div class="bracket__round-title">${title}</div>`;
 
-    card.appendChild(seedChip(teamA, placeholder || "Seed pending"));
-    if (teamB || placeholder) {
-      const connector = document.createElement("div");
-      connector.className = "bracket__connector";
-      connector.textContent = "vs";
-      card.appendChild(connector);
-      card.appendChild(seedChip(teamB, placeholder || "Winner advances"));
-    }
+    const matchup = document.createElement("div");
+    matchup.className = "bracket__matchup";
 
-    if (note) {
-      const meta = document.createElement("div");
-      meta.className = "bracket__note";
-      meta.textContent = note;
-      card.appendChild(meta);
+    const winnerSeedId = winnerSeed?.seed;
+    matchup.appendChild(
+      seedChip(topSeed, {
+        fallbackLabel: slot === "left" ? "Seed #1" : "Seed #2",
+        status: winnerSeedId && winnerSeedId === topSeed?.seed ? "winner" : "pending",
+        note: winnerSeedId && winnerSeedId === topSeed?.seed ? "Advanced" : "Awaiting result",
+      })
+    );
+
+    const connector = document.createElement("div");
+    connector.className = "bracket__connector";
+    connector.textContent = score || "vs";
+    matchup.appendChild(connector);
+
+    matchup.appendChild(
+      seedChip(lowerSeed, {
+        fallbackLabel: slot === "left" ? "Seed #4" : "Seed #3",
+        status: winnerSeedId ? (winnerSeedId === lowerSeed?.seed ? "winner" : "eliminated") : "pending",
+        note: winnerSeedId
+          ? winnerSeedId === lowerSeed?.seed
+            ? "Advanced"
+            : "Eliminated"
+          : "Awaiting kickoff",
+      })
+    );
+
+    card.appendChild(matchup);
+
+    if (description) {
+      const note = document.createElement("div");
+      note.className = "bracket__note";
+      note.textContent = description;
+      card.appendChild(note);
     }
 
     return card;
   }
 
-  function seedChip(seed, fallbackLabel) {
+  function buildFinalCard({ title, advancedSeed, awaitingLabel, semiOneResult }) {
+    const card = document.createElement("div");
+    card.className = "bracket__round bracket__round--final";
+    card.innerHTML = `<div class="bracket__round-title">${title}</div>`;
+
+    const matchup = document.createElement("div");
+    matchup.className = "bracket__matchup bracket__matchup--final";
+
+    const advanced = Boolean(advancedSeed && semiOneResult);
+    matchup.appendChild(
+      seedChip(advancedSeed, {
+        fallbackLabel: "Seed #1",
+        status: advanced ? "winner" : "pending",
+        note: advanced ? "Advanced from Semi #1" : "Awaiting #1 seed",
+      })
+    );
+
+    const connector = document.createElement("div");
+    connector.className = "bracket__connector bracket__connector--final";
+    connector.textContent = "vs";
+    matchup.appendChild(connector);
+
+    matchup.appendChild(
+      seedChip(null, {
+        fallbackLabel: awaitingLabel || "Awaiting opponent",
+        status: "pending",
+        seedLabel: awaitingLabel || "Awaiting opponent",
+      })
+    );
+
+    card.appendChild(matchup);
+    if (semiOneResult) {
+      const note = document.createElement("div");
+      note.className = "bracket__note";
+      note.textContent = `Semi #1: ${semiOneResult}`;
+      card.appendChild(note);
+    }
+    return card;
+  }
+
+  function buildEliminationNotice(seed5) {
+    const eliminated = document.createElement("div");
+    eliminated.className = "bracket__eliminated";
+    eliminated.textContent = seed5
+      ? `Seed ${seed5.seed} (${resolveTeam(seed5.team).displayName}) was eliminated`
+      : "Waiting on updated seeds…";
+    return eliminated;
+  }
+
+  function buildSemiRecap(seed1, seed4, score) {
+    const recap = document.createElement("div");
+    recap.className = "bracket__summary";
+    const title = document.createElement("div");
+    title.className = "bracket__summary-title";
+    title.textContent = "Semi #1 result";
+    recap.appendChild(title);
+
+    const body = document.createElement("div");
+    body.className = "bracket__summary-body";
+    body.appendChild(
+      seedChip(seed1, {
+        fallbackLabel: "Seed #1",
+        status: "winner",
+        note: "Into Tate Bowl",
+      })
+    );
+    body.appendChild(buildScoreBadge(score));
+    body.appendChild(
+      seedChip(seed4, {
+        fallbackLabel: "Seed #4",
+        status: "eliminated",
+        note: "Eliminated",
+      })
+    );
+
+    recap.appendChild(body);
+    return recap;
+  }
+
+  function buildScoreBadge(score) {
+    const badge = document.createElement("div");
+    badge.className = "bracket__score-badge";
+    badge.textContent = score || "vs";
+    return badge;
+  }
+
+  function formatSemiResult(winnerSeed, loserSeed, score) {
+    if (!winnerSeed || !loserSeed || !score) return null;
+    const winner = resolveTeam(winnerSeed.team).displayName;
+    const loser = resolveTeam(loserSeed.team).displayName;
+    return `${winner} defeated ${loser} ${score}`;
+  }
+
+  function seedChip(seed, options = {}) {
+    const { fallbackLabel = "Seed pending", status = "pending", seedLabel, note } =
+      typeof options === "string" ? { fallbackLabel: options } : options;
+
     const chip = document.createElement("div");
     chip.className = "seed-chip";
+    if (status) chip.classList.add(`seed-chip--${status}`);
+
     const logo = document.createElement("div");
     logo.className = "seed-chip__logo";
     if (seed) setLogo(logo, resolveTeam(seed.team).logoKey);
@@ -1553,9 +1787,15 @@
     name.textContent = seed ? resolveTeam(seed.team).displayName : fallbackLabel;
     const seedTag = document.createElement("div");
     seedTag.className = "seed-chip__seed";
-    seedTag.textContent = seed ? `Seed ${seed.seed}` : "Awaiting seed";
+    seedTag.textContent = seed ? `Seed ${seed.seed}` : seedLabel || "Awaiting seed";
     meta.appendChild(name);
     meta.appendChild(seedTag);
+    if (note) {
+      const statusLine = document.createElement("div");
+      statusLine.className = "seed-chip__status";
+      statusLine.textContent = note;
+      meta.appendChild(statusLine);
+    }
 
     chip.appendChild(meta);
     return chip;
@@ -2233,6 +2473,13 @@
   function formatScore(value) {
     if (value == null || Number.isNaN(value)) return "—";
     return Number(value).toFixed(1);
+  }
+
+  function formatCountPair(a, b, separator = " / ") {
+    const left = formatCount(a);
+    const right = formatCount(b);
+    if (left === "—" && right === "—") return "—";
+    return `${left}${separator}${right}`;
   }
 
   function formatCount(value) {
