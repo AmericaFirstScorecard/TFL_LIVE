@@ -123,6 +123,8 @@
     matchupAbortController: null,
     mvpAbortController: null,
     mvpVersion: 0,
+    lastMatchupFetchedAt: null,
+    lastMatchupAcceptedAt: null,
   };
 
   const els = {};
@@ -491,6 +493,7 @@
 
     try {
       const text = await fetchText(url, controller.signal);
+      state.lastMatchupFetchedAt = Date.now();
       const parsed = parseMatchupCSV(text);
       if (!parsed.snapshots.length) throw new Error("No matchup rows parsed");
       if (requestId < state.matchupVersion) return;
@@ -505,6 +508,7 @@
       if (state.matchupAbortController === controller) state.matchupAbortController = null;
       state.lastMatchupFreshness = nextFreshness || state.lastMatchupFreshness;
       state.lastMatchup = parsed;
+      state.lastMatchupAcceptedAt = Date.now();
       renderMatchup(parsed);
       setLoading(els.winLoading, false);
     } catch (err) {
@@ -513,6 +517,8 @@
       showError(els.winError, `Matchup feed error: ${err.message}`);
       if (requestId >= state.matchupVersion) {
         state.matchupVersion = requestId;
+        state.lastMatchupFetchedAt = Date.now();
+        state.lastMatchupAcceptedAt = Date.now();
         state.lastMatchup = buildSampleMatchup();
         renderMatchup(state.lastMatchup); // keep app alive
       }
@@ -771,7 +777,19 @@
         ytg,
         pregame,
         teamStats,
+        updateIndex: parseNumber(update) ?? i + 1,
       };
+    });
+
+    snapshots.sort((a, b) => {
+      const aIdx = a.updateIndex ?? 0;
+      const bIdx = b.updateIndex ?? 0;
+      if (aIdx === bIdx) {
+        const aMin = a.minuteLeft ?? 0;
+        const bMin = b.minuteLeft ?? 0;
+        return aMin - bMin;
+      }
+      return aIdx - bIdx;
     });
 
     const baseline =
@@ -1118,7 +1136,16 @@
 
     const resolvedTeamList = (teams || []).map((t) => resolveTeam(t).displayName);
 
-    if (els.lastUpdate) els.lastUpdate.textContent = `Last update: ${latest.update}`;
+    if (els.lastUpdate) {
+      const parts = [`Last update: ${latest.update}`];
+      if (state.lastMatchupFetchedAt) parts.push(`Fetched at ${formatLocalTime(state.lastMatchupFetchedAt)}`);
+      const dataAgeMs = state.lastMatchupAcceptedAt ? Date.now() - state.lastMatchupAcceptedAt : null;
+      if (dataAgeMs != null) {
+        parts.push(`Data age: ${formatDurationShort(dataAgeMs)}`);
+        if (dataAgeMs > 2 * 60 * 1000) parts.push("Data may be delayed");
+      }
+      els.lastUpdate.textContent = parts.join(" • ");
+    }
 
     setLogo(els.teamALogo, teamAInfo.logoKey);
     setLogo(els.teamBLogo, teamBInfo.logoKey);
@@ -2258,7 +2285,7 @@
   // =======================
   function buildSnapshotFreshness(snapshot, fallbackUpdateIndex = 0) {
     if (!snapshot) return null;
-    const updateIndex = parseNumber(snapshot.update) ?? fallbackUpdateIndex;
+    const updateIndex = snapshot.updateIndex ?? parseNumber(snapshot.update) ?? fallbackUpdateIndex;
     const minuteLeft = snapshot.minuteLeft != null ? Number(snapshot.minuteLeft) : null;
     const scoreA = snapshot.scoreA != null ? Number(snapshot.scoreA) : null;
     const scoreB = snapshot.scoreB != null ? Number(snapshot.scoreB) : null;
@@ -2275,14 +2302,20 @@
 
     // Allow hard resets (new game, sheet cleared, or scores rewound).
     // In those cases the update counter can jump backwards, so treat them as fresh.
-    const resetDetected =
-      (Number.isFinite(next.scoreSum) &&
-        Number.isFinite(prev.scoreSum) &&
-        next.scoreSum < prev.scoreSum) ||
-      (Number.isFinite(next.minuteLeft) &&
-        Number.isFinite(prev.minuteLeft) &&
-        next.minuteLeft > prev.minuteLeft + 1);
-    if (resetDetected) return true;
+    const scoreRewind =
+      Number.isFinite(next.scoreSum) && Number.isFinite(prev.scoreSum) && next.scoreSum < prev.scoreSum;
+    const clockJumpedBack =
+      Number.isFinite(next.minuteLeft) && Number.isFinite(prev.minuteLeft) && next.minuteLeft > prev.minuteLeft + 1;
+
+    if (scoreRewind || clockJumpedBack) {
+      const looksLikeNewGame =
+        (next.updateIndex != null && next.updateIndex <= 1) &&
+        (Number.isFinite(prev.minuteLeft)
+          ? next.minuteLeft == null || next.minuteLeft > prev.minuteLeft + 10
+          : true);
+      if (!looksLikeNewGame) return false;
+      return true;
+    }
 
     if (next.updateIndex > prev.updateIndex) return true;
     if (next.updateIndex < prev.updateIndex) return false;
@@ -2457,6 +2490,27 @@
     const mins = Math.floor(totalSeconds / 60);
     const secs = String(totalSeconds % 60).padStart(2, "0");
     return `${mins}:${secs}`;
+  }
+
+  function formatLocalTime(timestamp) {
+    if (!timestamp) return "";
+    try {
+      return new Date(timestamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    } catch (err) {
+      return "";
+    }
+  }
+
+  function formatDurationShort(ms) {
+    if (ms == null || Number.isNaN(ms)) return "";
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    if (totalSeconds < 60) return `${totalSeconds}s`;
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (totalMinutes < 60) return `${totalMinutes}m${seconds ? ` ${seconds}s` : ""}`;
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${hours}h${minutes ? ` ${minutes}m` : ""}`;
   }
 
   function pickTeamHeaders(columns) {
