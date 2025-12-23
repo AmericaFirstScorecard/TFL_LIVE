@@ -1641,7 +1641,7 @@
       seedChip(topSeed, {
         fallbackLabel: slot === "left" ? "Seed #1" : "Seed #2",
         status: winnerSeedId && winnerSeedId === topSeed?.seed ? "winner" : "pending",
-        note: winnerSeedId && winnerSeedId === topSeed?.seed ? "Advanced" : "Awaiting result",
+        note: winnerSeedId && winnerSeedId === topSeed?.seed ? "Advanced" : "Awaiting kickoff",
       })
     );
 
