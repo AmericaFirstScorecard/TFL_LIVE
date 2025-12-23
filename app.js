@@ -81,7 +81,11 @@
   const MVP_WEIGHTS = { pass: 2.0, rush: 1.0, recv: 1.0, def: 1.0, wins: 2 };
 
   // Bracket copy for latest semi result
-  const SEMI_ONE_SCORE = "58-45";
+  const SEMI_ONE_RESULT = {
+    winnerTeam: "cin",
+    loserTeam: "49ers",
+    score: "45-21",
+  };
 
   // =======================
   // STATE / DOM
@@ -1578,8 +1582,14 @@
 
     const seeds = buildSeeds(rows);
     const [seed1, seed2, seed3, seed4, seed5] = seeds;
-    const semiOneScore = seed1 && seed4 ? SEMI_ONE_SCORE : null;
-    const semiOneResult = formatSemiResult(seed1, seed4, semiOneScore);
+
+    const configuredSemiOneWinner = seedByTeam(seeds, SEMI_ONE_RESULT.winnerTeam);
+    const configuredSemiOneLoser = seedByTeam(seeds, SEMI_ONE_RESULT.loserTeam);
+    const semiOneWinner = configuredSemiOneWinner || seed1;
+    const semiOneLoser = configuredSemiOneLoser || seed4;
+    const hasSemiOneResult = Boolean(configuredSemiOneWinner && configuredSemiOneLoser);
+    const semiOneScore = hasSemiOneResult ? SEMI_ONE_RESULT.score : null;
+    const semiOneResult = formatSemiResult(semiOneWinner, semiOneLoser, semiOneScore);
 
     const bracketGrid = document.createElement("div");
     bracketGrid.className = "bracket__grid";
@@ -1587,16 +1597,16 @@
     const semiOne = buildSemiCard({
       title: "Semifinal #1",
       slot: "left",
-      topSeed: seed1,
-      lowerSeed: seed4,
-      winnerSeed: seed1 && seed4 ? seed1 : null,
+      topSeed: semiOneWinner,
+      lowerSeed: semiOneLoser,
+      winnerSeed: hasSemiOneResult ? semiOneWinner : null,
       score: semiOneScore,
-      description: semiOneResult || "Waiting for #1 vs #4 to populate",
+      description: semiOneResult || "Waiting for Bengals vs 49ers to populate",
     });
 
     const final = buildFinalCard({
       title: "Tate Super Bowl",
-      advancedSeed: seed1,
+      advancedSeed: hasSemiOneResult ? semiOneWinner : seed1,
       awaitingLabel: seed2 && seed3 ? "Winner of Semifinal #2" : "Awaiting #2/#3 winner",
       semiOneResult,
     });
@@ -2579,6 +2589,18 @@
       .sort((a, b) => (b.points ?? 0) - (a.points ?? 0) || (b.winPct ?? 0) - (a.winPct ?? 0) || (b.wins ?? 0) - (a.wins ?? 0))
       .slice(0, 5)
       .map((row, idx) => ({ ...row, seed: idx + 1 }));
+  }
+
+  function seedByTeam(seeds, teamKey) {
+    if (!Array.isArray(seeds) || !teamKey) return null;
+    const targetKey = canonicalTeamKey(teamKey) || normalizeTeamKey(teamKey);
+    if (!targetKey) return null;
+    return (
+      seeds.find((seed) => {
+        const seedKey = canonicalTeamKey(seed.team) || normalizeTeamKey(seed.team);
+        return seedKey === targetKey;
+      }) || null
+    );
   }
 
   function lookupStanding(map, raw) {
