@@ -85,7 +85,7 @@
     semi1: {
       winnerTeam: "lou",
       loserTeam: "dal",
-      score: "45-21",
+      score: "58-45",
     },
     semi2: {
       winnerTeam: "cin",
@@ -2977,7 +2977,7 @@
         attempts: 96,
         passTd: 17,
         interceptions: 2,
-        yards: 1419,
+        yards: 19,
         compPct: 0.77,
         rushYards: 80,
         recvYards: 1100,
