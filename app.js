@@ -1101,7 +1101,6 @@
     const latest = snapshots[snapshots.length - 1];
 
     const isFinal = latest.minuteLeft != null && latest.minuteLeft <= 0;
-    const previousFinal = state.lastIsFinal;
     if (!isFinal) state.hasShownConfetti = false;
     if (els.gameStatus) {
       els.gameStatus.textContent = isFinal ? "Final" : "Live";
@@ -1157,11 +1156,11 @@
           : "B"
         : null;
     applyOutcomeStyles(winner);
-    if (previousFinal === false && isFinal && winner) {
+    const shouldShowConfetti = isFinal && winner && !state.hasShownConfetti;
+    if (shouldShowConfetti) {
       const winnerTeam = winner === "A" ? teamAInfo : teamBInfo;
       launchConfetti(teamColor(teamColorKey(winnerTeam)));
     }
-    if (previousFinal === null) state.lastIsFinal = isFinal;
     state.lastIsFinal = isFinal;
 
     const metrics = analyzeGame(home, snapshots);
