@@ -2923,7 +2923,7 @@
       color,
     }));
 
-    const decay = 70;
+    const decay = 140;
     let frame = 0;
 
     function draw() {
