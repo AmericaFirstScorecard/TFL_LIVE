@@ -90,14 +90,14 @@
   // Bracket copy for latest semi results
   const SEMI_RESULTS = {
     semi1: {
-      winnerTeam: "lou",
-      loserTeam: "dal",
-      score: "58-45",
+      winnerTeam: "",
+      loserTeam: "",
+      score: "",
     },
     semi2: {
-      winnerTeam: "cin",
-      loserTeam: "49ers",
-      score: "45-21",
+      winnerTeam: "",
+      loserTeam: "",
+      score: "",
     },
   };
 
