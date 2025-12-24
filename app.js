@@ -833,14 +833,14 @@
     left.appendChild(statusPill);
   
     const right = document.createElement("div");
-    right.className = "schedule-score";
+    right.className = "schedule-game";
   
     const scoreLabel = document.createElement("span");
-    scoreLabel.className = "schedule-score__label";
+    scoreLabel.className = "schedule-game__label";
     scoreLabel.textContent = "Score ";
   
     const scoreVal = document.createElement("span");
-    scoreVal.className = "schedule-score__value";
+    scoreVal.className = "schedule-game__value";
     scoreVal.textContent =
       awayScore == null && homeScore == null ? "—" : `${awayScore ?? "—"}–${homeScore ?? "—"}`;
   
