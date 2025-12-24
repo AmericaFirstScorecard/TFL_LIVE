@@ -1621,7 +1621,7 @@
     }
 
     const seeds = buildSeeds(rows);
-    const [seed1, seed2, seed3, seed4, seed5] = seeds;
+    const [seed1, seed2, seed3, seed4, seed5, seed6] = seeds;
 
     const configuredSemiOneWinner = seedByTeam(seeds, SEMI_RESULTS.semi1.winnerTeam);
     const configuredSemiOneLoser = seedByTeam(seeds, SEMI_RESULTS.semi1.loserTeam);
@@ -1788,6 +1788,7 @@
     eliminated.className = "bracket__eliminated";
     eliminated.textContent = seed5
       ? `Seed ${seed5.seed} (${resolveTeam(seed5.team).displayName}) was eliminated`
+      ? `Seed ${seed6.seed} (${resolveTeam(seed6.team).displayName}) was eliminated`
       : "Waiting on updated seeds…";
     return eliminated;
   }
