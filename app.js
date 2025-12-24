@@ -858,6 +858,11 @@
   
   function scheduleTeamChip(teamRaw, label, winnerState /* "winner" | "loser" | "none" */) {
     const teamInfo = resolveTeam(teamRaw);
+  
+    // Pull record from standings (works once MVP/standings have loaded)
+    const standing = findTeamRecord(teamRaw, teamInfo.displayName, teamInfo.canonicalKey);
+    const recordText = standing ? formatRecord(standing) : "—"; // or "Record —"
+  
     const chip = document.createElement("div");
     chip.className = "seed-chip";
   
@@ -875,16 +880,17 @@
     name.className = "seed-chip__name";
     name.textContent = teamInfo.displayName;
   
-    const sub = document.createElement("div");
-    sub.className = "seed-chip__seed";
-    sub.textContent = label;
-
+    const seed = document.createElement("div");
+    seed.className = "seed-chip__seed";
+    seed.textContent = label; // "Away" / "Home"
+  
     const rec = document.createElement("div");
     rec.className = "schedule-team__record";
     rec.textContent = recordText;
   
     meta.appendChild(name);
-    meta.appendChild(sub);
+    meta.appendChild(seed);
+    meta.appendChild(rec);
   
     chip.appendChild(logo);
     chip.appendChild(meta);
