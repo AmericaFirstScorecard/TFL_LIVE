@@ -878,6 +878,10 @@
     const sub = document.createElement("div");
     sub.className = "seed-chip__seed";
     sub.textContent = label;
+
+    const sub = document.createElement("div");
+    sub.className = "schedule-team__record";
+    sub.textContent = recordText;
   
     meta.appendChild(name);
     meta.appendChild(sub);
