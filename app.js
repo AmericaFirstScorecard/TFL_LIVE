@@ -833,7 +833,7 @@
     left.appendChild(statusPill);
   
     const right = document.createElement("div");
-    right.className = "schedule-game";
+    right.className = "schedule-game__score";
   
     const scoreLabel = document.createElement("span");
     scoreLabel.className = "schedule-game__label";
