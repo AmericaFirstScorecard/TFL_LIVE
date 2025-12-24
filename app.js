@@ -837,7 +837,7 @@
   
     const scoreLabel = document.createElement("span");
     scoreLabel.className = "schedule-score__label";
-    scoreLabel.textContent = "Score";
+    scoreLabel.textContent = "Score ";
   
     const scoreVal = document.createElement("span");
     scoreVal.className = "schedule-score__value";
