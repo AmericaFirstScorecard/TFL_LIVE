@@ -1652,12 +1652,12 @@
       lowerSeed: semiOneLoser,
       winnerSeed: hasSemiOneResult ? semiOneWinner : null,
       score: semiOneScore,
-      description: semiOneResult || "Waiting for Louisville vs Dallas to populate",
+      description: semiOneResult || "NOT FINALIZED",
     });
 
     const final = buildFinalCard({
       title: "Tate Super Bowl",
-      leftSeed: hasSemiOneResult ? semiOneWinner : seed1,
+      leftSeed: hasSemiOneResult ? semiOneWinner : null,
       rightSeed: hasSemiTwoResult ? semiTwoWinner : null,
       awaitingLabelRight: seed2 && seed3 ? "Winner of Semifinal #2" : "Awaiting #2/#3 winner",
       semiOneResult,
@@ -1671,7 +1671,7 @@
       lowerSeed: semiTwoLoser,
       winnerSeed: hasSemiTwoResult ? semiTwoWinner : null,
       score: semiTwoScore,
-      description: semiTwoResult || "Waiting for Bengals vs 49ers to populate",
+      description: semiTwoResult || "NOT FINALIZED",
     });
 
     bracketGrid.appendChild(semiOne);
