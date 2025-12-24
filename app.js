@@ -577,6 +577,7 @@
       state.rosterMap = roster;
       state.playersByTeam = buildPlayersByTeam(mvpRecords);
       state.standingsLookup = buildStandingsLookup(standings);
+      if (state.lastScheduleGames?.length) renderSchedule(state.lastScheduleGames);
       renderMvp(mvpRecords);
       renderStandings(standings);
       renderBracket(standings);
@@ -743,49 +744,80 @@
     return games;
   }
   
-  function renderSchedule(games) {
-    if (!els.scheduleFeed) return;
-    els.scheduleFeed.innerHTML = "";
+  function renderSchedule(games) function renderScheduleGame(game) {
+    const complete = Boolean(game.complete);
   
-    if (!games || !games.length) {
-      if (els.scheduleEmpty) els.scheduleEmpty.hidden = false;
-      setLoading(els.scheduleLoading, false);
-      toggleError(els.scheduleError, false);
-      if (els.scheduleStatus) els.scheduleStatus.textContent = "No games";
-      return;
+    const awayScore = game.scoreAway;
+    const homeScore = game.scoreHome;
+  
+    let awayState = "none";
+    let homeState = "none";
+    if (complete && awayScore != null && homeScore != null) {
+      if (awayScore > homeScore) {
+        awayState = "winner";
+        homeState = "loser";
+      } else if (homeScore > awayScore) {
+        homeState = "winner";
+        awayState = "loser";
+      }
     }
-    if (els.scheduleEmpty) els.scheduleEmpty.hidden = true;
   
-    // Group by week
-    const byWeek = new Map();
-    games.forEach((g) => {
-      if (!byWeek.has(g.week)) byWeek.set(g.week, []);
-      byWeek.get(g.week).push(g);
-    });
+    const status = complete ? "FINAL" : "SCHEDULED";
+    const time = game.startTime || "TBD";
   
-    const weeks = Array.from(byWeek.keys()).sort((a, b) => a - b);
-    const frag = document.createDocumentFragment();
+    const hasScore = Number.isFinite(+awayScore) && Number.isFinite(+homeScore);
+    const scoreText = hasScore ? `${awayScore}–${homeScore}` : "—";
+    const showScore = status !== "SCHEDULED"; // change if you want score always shown
   
-    weeks.forEach((week) => {
-      const weekCard = document.createElement("div");
-      weekCard.className = "bracket__round schedule-week";
+    const awayRec = getScheduleRecordShort(game.away);
+    const homeRec = getScheduleRecordShort(game.home);
   
-      const title = document.createElement("div");
-      title.className = "bracket__round-title";
-      title.textContent = `Week ${week}`;
+    const card = document.createElement("div");
+    card.className = "gameCard";
   
-      const list = document.createElement("div");
-      list.className = "schedule-week__list";
+    // left: matchup line
+    const matchup = document.createElement("div");
+    matchup.className = "matchupLine";
   
-      const weekGames = byWeek.get(week) || [];
-      weekGames.forEach((g) => list.appendChild(renderScheduleGame(g)));
+    matchup.appendChild(scheduleTeamInline(game.away, awayRec, awayState));
   
-      weekCard.appendChild(title);
-      weekCard.appendChild(list);
-      frag.appendChild(weekCard);
-    });
+    const at = document.createElement("div");
+    at.className = "atChip";
+    at.textContent = "@";
+    matchup.appendChild(at);
   
-    els.scheduleFeed.appendChild(frag);
+    matchup.appendChild(scheduleTeamInline(game.home, homeRec, homeState));
+  
+    // right: meta column
+    const meta = document.createElement("div");
+    meta.className = "gameMeta";
+  
+    const pillRow = document.createElement("div");
+    pillRow.className = "pillRow";
+  
+    const timePill = document.createElement("span");
+    // keep your existing pill system
+    timePill.className = "pill pill--accent";
+    timePill.textContent = time;
+  
+    const statusPill = document.createElement("span");
+    statusPill.className = complete ? "pill pill--warning" : "pill";
+    statusPill.textContent = status;
+  
+    pillRow.appendChild(timePill);
+    pillRow.appendChild(statusPill);
+  
+    const score = document.createElement("div");
+    score.className = "scoreText";
+    score.textContent = showScore ? scoreText : "";
+  
+    meta.appendChild(pillRow);
+    meta.appendChild(score);
+  
+    card.appendChild(matchup);
+    card.appendChild(meta);
+  
+    return card;
   }
   
   function renderScheduleGame(game) {
@@ -856,37 +888,38 @@
     return wrap;
   }
   
-  function scheduleTeamChip(teamRaw, label, winnerState /* "winner" | "loser" | "none" */) {
+  function scheduleTeamInline(teamRaw, rec, winnerState /* "winner" | "loser" | "none" */) {
     const teamInfo = resolveTeam(teamRaw);
-    const chip = document.createElement("div");
-    chip.className = "seed-chip";
   
-    if (winnerState === "winner") chip.classList.add("seed-chip--winner");
-    if (winnerState === "loser") chip.classList.add("seed-chip--eliminated");
+    const wrap = document.createElement("div");
+    wrap.className = "teamInline";
+    if (winnerState === "winner") wrap.classList.add("teamInline--winner");
+    if (winnerState === "loser") wrap.classList.add("teamInline--loser");
   
     const logo = document.createElement("div");
-    logo.className = "seed-chip__logo";
+    logo.className = "teamLogo";
     setLogo(logo, teamInfo.logoKey);
   
-    const meta = document.createElement("div");
-    meta.className = "seed-chip__meta";
+    const text = document.createElement("div");
+    text.className = "teamText";
   
     const name = document.createElement("div");
-    name.className = "seed-chip__name";
+    name.className = "teamName";
     name.textContent = teamInfo.displayName;
   
-    const sub = document.createElement("div");
-    sub.className = "seed-chip__seed";
-    sub.textContent = label;
+    const record = document.createElement("div");
+    record.className = "teamRecord";
+    record.textContent = rec || "";
   
-    meta.appendChild(name);
-    meta.appendChild(sub);
+    text.appendChild(name);
+    text.appendChild(record);
   
-    chip.appendChild(logo);
-    chip.appendChild(meta);
+    wrap.appendChild(logo);
+    wrap.appendChild(text);
   
-    return chip;
+    return wrap;
   }
+
 
 
   // =======================
@@ -3077,6 +3110,29 @@
     }
     return null;
   }
+
+  function getScheduleRecordShort(teamRaw) {
+    const team = resolveTeam(teamRaw);
+
+    // findTeamRecord() already handles aliases using standingsKey()
+    const row = findTeamRecord(
+      teamRaw,
+      team.displayName,
+      team.canonicalKey,
+      team.logoKey
+    );
+
+    if (!row) return "";
+
+    const w = Number(row.wins);
+    const l = Number(row.losses);
+    const t = Number(row.draws); // your standings uses draws as ties
+
+    if (!Number.isFinite(w) || !Number.isFinite(l)) return "";
+
+    return Number.isFinite(t) && t ? `${w}-${l}-${t}` : `${w}-${l}`;
+  }
+
 
   function setLoading(el, isLoading) {
     if (!el) return;
