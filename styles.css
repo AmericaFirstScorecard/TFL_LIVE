@@ -1025,7 +1025,6 @@ body {
 .schedule-game__meta {
   display: grid;
   gap: 8px;
-  justify-items: end;
   flex: 0 0 auto;
   min-width: 160px;
 }
