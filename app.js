@@ -879,9 +879,9 @@
     sub.className = "seed-chip__seed";
     sub.textContent = label;
 
-    const sub = document.createElement("div");
-    sub.className = "schedule-team__record";
-    sub.textContent = recordText;
+    const rec = document.createElement("div");
+    rec.className = "schedule-team__record";
+    rec.textContent = recordText;
   
     meta.appendChild(name);
     meta.appendChild(sub);
