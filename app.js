@@ -790,7 +790,7 @@
   
   function renderScheduleGame(game) {
     const wrap = document.createElement("div");
-    wrap.className = "schedule-game";
+    wrap.className = "schedule-game__meta";
   
     const teams = document.createElement("div");
     teams.className = "schedule-game__teams";
