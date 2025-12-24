@@ -825,7 +825,7 @@
     timePill.className = "pill pill--accent";
     timePill.textContent = game.startTime || "TBD";
 
-    const span = document.createElement("span");
+    span.innerHTML = "&nbsp;";
   
     const statusPill = document.createElement("span");
     statusPill.className = complete ? "pill pill--warning" : "pill";
