@@ -824,12 +824,15 @@
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
     timePill.textContent = game.startTime || "TBD";
+
+    const emptySpan = document.createElement("span"); // <span></span>
   
     const statusPill = document.createElement("span");
     statusPill.className = complete ? "pill pill--warning" : "pill";
     statusPill.textContent = complete ? "FINAL" : "SCHEDULED";
   
     left.appendChild(timePill);
+    left.appendChild(emptySpan);
     left.appendChild(statusPill);
   
     const right = document.createElement("div");
