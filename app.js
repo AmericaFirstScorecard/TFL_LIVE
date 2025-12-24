@@ -577,7 +577,6 @@
       state.rosterMap = roster;
       state.playersByTeam = buildPlayersByTeam(mvpRecords);
       state.standingsLookup = buildStandingsLookup(standings);
-      if (state.lastScheduleGames?.length) renderSchedule(state.lastScheduleGames);
       renderMvp(mvpRecords);
       renderStandings(standings);
       renderBracket(standings);
@@ -743,54 +742,66 @@
   
     return games;
   }
-
+  
   function renderSchedule(games) {
     if (!els.scheduleFeed) return;
-
     els.scheduleFeed.innerHTML = "";
-
-    if (!Array.isArray(games) || games.length === 0) {
+  
+    if (!games || !games.length) {
       if (els.scheduleEmpty) els.scheduleEmpty.hidden = false;
+      setLoading(els.scheduleLoading, false);
+      toggleError(els.scheduleError, false);
       if (els.scheduleStatus) els.scheduleStatus.textContent = "No games";
       return;
     }
-
     if (els.scheduleEmpty) els.scheduleEmpty.hidden = true;
-
-    // sort by week, then by startTime (best-effort)
-    const sorted = [...games].sort((a, b) => {
-      const w = (a.week ?? 0) - (b.week ?? 0);
-      if (w !== 0) return w;
-      return String(a.startTime || "").localeCompare(String(b.startTime || ""));
+  
+    // Group by week
+    const byWeek = new Map();
+    games.forEach((g) => {
+      if (!byWeek.has(g.week)) byWeek.set(g.week, []);
+      byWeek.get(g.week).push(g);
     });
-
+  
+    const weeks = Array.from(byWeek.keys()).sort((a, b) => a - b);
     const frag = document.createDocumentFragment();
-    let currentWeek = null;
-
-    for (const game of sorted) {
-      if (game.week !== currentWeek) {
-        currentWeek = game.week;
-        const header = document.createElement("div");
-        header.className = "scheduleWeekHeader";
-        header.textContent = `Week ${currentWeek}`;
-        frag.appendChild(header);
-      }
-
-      frag.appendChild(renderScheduleGame(game));
-    }
-
+  
+    weeks.forEach((week) => {
+      const weekCard = document.createElement("div");
+      weekCard.className = "bracket__round schedule-week";
+  
+      const title = document.createElement("div");
+      title.className = "bracket__round-title";
+      title.textContent = `Week ${week}`;
+  
+      const list = document.createElement("div");
+      list.className = "schedule-week__list";
+  
+      const weekGames = byWeek.get(week) || [];
+      weekGames.forEach((g) => list.appendChild(renderScheduleGame(g)));
+  
+      weekCard.appendChild(title);
+      weekCard.appendChild(list);
+      frag.appendChild(weekCard);
+    });
+  
     els.scheduleFeed.appendChild(frag);
   }
-
+  
   function renderScheduleGame(game) {
+    const wrap = document.createElement("div");
+    wrap.className = "schedule-game";
+  
+    const teams = document.createElement("div");
+    teams.className = "schedule-game__teams";
+  
     const complete = Boolean(game.complete);
-
     const awayScore = game.scoreAway;
     const homeScore = game.scoreHome;
-
+  
     let awayState = "none";
     let homeState = "none";
-
+  
     if (complete && awayScore != null && homeScore != null) {
       if (awayScore > homeScore) {
         awayState = "winner";
@@ -800,94 +811,82 @@
         awayState = "loser";
       }
     }
-
-    const status = complete ? "FINAL" : "SCHEDULED";
-    const time = game.startTime || "TBD";
-
-    const hasScore = Number.isFinite(+awayScore) && Number.isFinite(+homeScore);
-    const scoreText = hasScore ? `${awayScore}–${homeScore}` : "—";
-    const showScore = status !== "SCHEDULED";
-
-    const awayRec = getScheduleRecordShort(game.away);
-    const homeRec = getScheduleRecordShort(game.home);
-
-    const card = document.createElement("div");
-    card.className = "gameCard";
-
-    const matchup = document.createElement("div");
-    matchup.className = "matchupLine";
-
-    matchup.appendChild(scheduleTeamInline(game.away, awayRec, awayState));
-
-    const at = document.createElement("div");
-    at.className = "atChip";
-    at.textContent = "@";
-    matchup.appendChild(at);
-
-    matchup.appendChild(scheduleTeamInline(game.home, homeRec, homeState));
-
+  
+    teams.appendChild(scheduleTeamChip(game.away, "Away", awayState));
+    teams.appendChild(scheduleTeamChip(game.home, "Home", homeState));
+  
     const meta = document.createElement("div");
-    meta.className = "gameMeta";
-
-    const pillRow = document.createElement("div");
-    pillRow.className = "pillRow";
-
+    meta.className = "schedule-game__meta";
+  
+    const left = document.createElement("div");
+    left.className = "schedule-score";
+  
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
-    timePill.textContent = time;
-
+    timePill.textContent = game.startTime || "TBD";
+  
     const statusPill = document.createElement("span");
     statusPill.className = complete ? "pill pill--warning" : "pill";
-    statusPill.textContent = status;
-
-    pillRow.appendChild(timePill);
-    pillRow.appendChild(statusPill);
-
-    const score = document.createElement("div");
-    score.className = "scoreText";
-    score.textContent = showScore ? scoreText : "";
-
-    meta.appendChild(pillRow);
-    meta.appendChild(score);
-
-    card.appendChild(matchup);
-    card.appendChild(meta);
-
-    return card;
-  }
-
-  function scheduleTeamInline(teamRaw, rec, winnerState /* "winner" | "loser" | "none" */) {
-    const teamInfo = resolveTeam(teamRaw);
-
-    const wrap = document.createElement("div");
-    wrap.className = "teamInline";
-    if (winnerState === "winner") wrap.classList.add("teamInline--winner");
-    if (winnerState === "loser") wrap.classList.add("teamInline--loser");
-
-    const logo = document.createElement("div");
-    logo.className = "teamLogo";
-    setLogo(logo, teamInfo.logoKey);
-
-    const text = document.createElement("div");
-    text.className = "teamText";
-
-    const name = document.createElement("div");
-    name.className = "teamName";
-    name.textContent = teamInfo.displayName;
-
-    const record = document.createElement("div");
-    record.className = "teamRecord";
-    record.textContent = rec || "";
-
-    text.appendChild(name);
-    text.appendChild(record);
-
-    wrap.appendChild(logo);
-    wrap.appendChild(text);
-
+    statusPill.textContent = complete ? "FINAL" : "SCHEDULED";
+  
+    left.appendChild(timePill);
+    left.appendChild(statusPill);
+  
+    const right = document.createElement("div");
+    right.className = "schedule-score";
+  
+    const scoreLabel = document.createElement("span");
+    scoreLabel.className = "schedule-score__label";
+    scoreLabel.textContent = "Score";
+  
+    const scoreVal = document.createElement("span");
+    scoreVal.className = "schedule-score__value";
+    scoreVal.textContent =
+      awayScore == null && homeScore == null ? "—" : `${awayScore ?? "—"}–${homeScore ?? "—"}`;
+  
+    right.appendChild(scoreLabel);
+    right.appendChild(scoreVal);
+  
+    meta.appendChild(left);
+    meta.appendChild(right);
+  
+    wrap.appendChild(teams);
+    wrap.appendChild(meta);
+  
     return wrap;
   }
-
+  
+  function scheduleTeamChip(teamRaw, label, winnerState /* "winner" | "loser" | "none" */) {
+    const teamInfo = resolveTeam(teamRaw);
+    const chip = document.createElement("div");
+    chip.className = "seed-chip";
+  
+    if (winnerState === "winner") chip.classList.add("seed-chip--winner");
+    if (winnerState === "loser") chip.classList.add("seed-chip--eliminated");
+  
+    const logo = document.createElement("div");
+    logo.className = "seed-chip__logo";
+    setLogo(logo, teamInfo.logoKey);
+  
+    const meta = document.createElement("div");
+    meta.className = "seed-chip__meta";
+  
+    const name = document.createElement("div");
+    name.className = "seed-chip__name";
+    name.textContent = teamInfo.displayName;
+  
+    const sub = document.createElement("div");
+    sub.className = "seed-chip__seed";
+    sub.textContent = label;
+  
+    meta.appendChild(name);
+    meta.appendChild(sub);
+  
+    chip.appendChild(logo);
+    chip.appendChild(meta);
+  
+    return chip;
+  }
 
 
   // =======================
@@ -3078,29 +3077,6 @@
     }
     return null;
   }
-
-  function getScheduleRecordShort(teamRaw) {
-    const team = resolveTeam(teamRaw);
-
-    // findTeamRecord() already handles aliases using standingsKey()
-    const row = findTeamRecord(
-      teamRaw,
-      team.displayName,
-      team.canonicalKey,
-      team.logoKey
-    );
-
-    if (!row) return "";
-
-    const w = Number(row.wins);
-    const l = Number(row.losses);
-    const t = Number(row.draws); // your standings uses draws as ties
-
-    if (!Number.isFinite(w) || !Number.isFinite(l)) return "";
-
-    return Number.isFinite(t) && t ? `${w}-${l}-${t}` : `${w}-${l}`;
-  }
-
 
   function setLoading(el, isLoading) {
     if (!el) return;
