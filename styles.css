@@ -1088,12 +1088,6 @@ body {
   align-items: center;
 }
 
-.schedule-score {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .schedule-game__team {
   display: inline-flex;
   align-items: center;
