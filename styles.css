@@ -1168,6 +1168,12 @@ body {
     justify-content: flex-start;
   }
 
+  .schedule-score {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   .schedule-team__name {
     white-space: normal;
     overflow: visible;
