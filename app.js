@@ -1783,13 +1783,17 @@
     return card;
   }
 
-  function buildEliminationNotice(seed5,seed6) {
+  function buildEliminationNotice(seed5, seed6) {
     const eliminated = document.createElement("div");
     eliminated.className = "bracket__eliminated";
-    eliminated.textContent = seed5,seed6
-      ? `Seed ${seed5.seed} (${resolveTeam(seed5.team).displayName}) was eliminated`
-      ? `Seed ${seed6.seed} (${resolveTeam(seed6.team).displayName}) was eliminated`
-      : "Waiting on updated seeds…";
+    const eliminatedSeeds = [];
+    if (seed5) eliminatedSeeds.push(`Seed ${seed5.seed} (${resolveTeam(seed5.team).displayName})`);
+    if (seed6) eliminatedSeeds.push(`Seed ${seed6.seed} (${resolveTeam(seed6.team).displayName})`);
+
+    eliminated.textContent =
+      eliminatedSeeds.length > 0
+        ? `${eliminatedSeeds.join(" and ")} ${eliminatedSeeds.length > 1 ? "were" : "was"} eliminated`
+        : "Waiting on updated seeds…";
     return eliminated;
   }
 
@@ -2674,7 +2678,7 @@
     return [...rows]
       .filter((row) => row.team)
       .sort((a, b) => (b.points ?? 0) - (a.points ?? 0) || (b.winPct ?? 0) - (a.winPct ?? 0) || (b.wins ?? 0) - (a.wins ?? 0))
-      .slice(0, 5)
+      .slice(0, 6)
       .map((row, idx) => ({ ...row, seed: idx + 1 }));
   }
 
