@@ -8,6 +8,9 @@
   const MVP_CSV_URL =
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQp0jxVIwA59hH031QxJFBsXdQVIi7fNdPS5Ra2w1lK2UYA08rC0moSSqoKPSFL8BRZFh_hC4cO8ymk/pub?output=xlsx";
 
+  const SCHEDULE_CSV_URL =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vRXwm2d_zRf_4ecp0Czfmd5IRz92bzXLmQ3aY0X0aJ56Ua_vQjMrB2I7yCLYgLR48wLwDuGfjURL6jN/pub?gid=0&single=true&output=csv";
+
   const POLL_MS = 30_000;
 
   const MIN_DISPLAY_PROB = 0.01;
@@ -110,6 +113,10 @@
     matchupLoading: true,
     mvpLoading: true,
     standingsLoading: true,
+    scheduleLoading: true,
+    scheduleAbortController: null,
+    scheduleVersion: 0,
+    lastScheduleGames: [],
     sort: { key: "mvpScore", dir: "desc" },
     lastMvpRecords: [],
     lastStandings: [],
@@ -163,6 +170,7 @@
     const refresh = () => {
       fetchMatchup();
       fetchMvp();
+      fetchSchedule();
     };
 
     refresh();
@@ -251,6 +259,13 @@
     els.playerOverlay = id("playerOverlay");
     els.playerOverlayClose = id("playerOverlayClose");
     els.playerOverlayContent = id("playerOverlayContent");
+
+    els.scheduleFeed = id("scheduleFeed");
+    els.scheduleStatus = id("scheduleStatus");
+    els.scheduleLoading = id("scheduleLoading");
+    els.scheduleError = id("scheduleError");
+    els.scheduleEmpty = id("scheduleEmpty");
+
   }
 
   function initTabs() {
@@ -261,6 +276,7 @@
       standings: document.getElementById("tab-standings"),
       news: document.getElementById("tab-news"),
       bracket: document.getElementById("tab-bracket"),
+      schedule: document.getElementById("tab-schedule"),
     };
 
     function setTab(tab) {
@@ -598,6 +614,280 @@
       }
     }
   }
+
+  // =======================
+  // SCHEDULE TAB
+  // =======================
+  async function fetchSchedule() {
+    // If the schedule tab doesn't exist in the DOM, don't do anything.
+    if (!els.scheduleFeed) return;
+  
+    setLoading(els.scheduleLoading, true);
+    toggleError(els.scheduleError, false);
+    if (els.scheduleEmpty) els.scheduleEmpty.hidden = true;
+    if (els.scheduleStatus) els.scheduleStatus.textContent = "Loading…";
+  
+    const requestId = Date.now();
+    if (state.scheduleAbortController) state.scheduleAbortController.abort();
+    const controller = new AbortController();
+    state.scheduleAbortController = controller;
+  
+    const url = overrideUrl("schedule") || SCHEDULE_CSV_URL;
+  
+    try {
+      const text = await fetchText(url, controller.signal);
+      if (requestId < state.scheduleVersion) return;
+  
+      const games = parseScheduleCSV(text);
+  
+      state.scheduleVersion = requestId;
+      if (state.scheduleAbortController === controller) state.scheduleAbortController = null;
+  
+      state.lastScheduleGames = games;
+      renderSchedule(games);
+  
+      setLoading(els.scheduleLoading, false);
+      toggleError(els.scheduleError, false);
+      if (els.scheduleStatus) els.scheduleStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+      console.error("[schedule]", err);
+  
+      if (requestId >= state.scheduleVersion) {
+        state.scheduleVersion = requestId;
+        if (state.scheduleAbortController === controller) state.scheduleAbortController = null;
+  
+        setLoading(els.scheduleLoading, false);
+        showError(els.scheduleError, `Schedule feed error: ${err.message}`);
+        if (els.scheduleStatus) els.scheduleStatus.textContent = "Error";
+      }
+    }
+  }
+  
+  function parseScheduleCSV(text) {
+    const rows = d3.csvParse(text);
+    if (!rows || !rows.length) return [];
+  
+    const normRow = (obj) => {
+      const out = {};
+      for (const [k, v] of Object.entries(obj)) out[String(k).trim().toLowerCase()] = v;
+      return out;
+    };
+  
+    const pick = (r, keys) => {
+      for (const k of keys) {
+        const v = r[k];
+        if (v != null && String(v).trim() !== "") return v;
+      }
+      return "";
+    };
+  
+    const toInt = (v) => {
+      const n = parseInt(String(v ?? "").trim(), 10);
+      return Number.isFinite(n) ? n : null;
+    };
+  
+    const toScore = (v) => {
+      const n = parseNumber(v);
+      return Number.isFinite(n) ? n : null;
+    };
+  
+    const isYes = (v) => String(v ?? "").trim().toLowerCase() === "yes";
+  
+    const games = rows
+      .map((row) => {
+        const r = normRow(row);
+  
+        const week = toInt(
+          pick(r, ["round #", "round", "week", "wk", "w"])
+        );
+  
+        const away = String(
+          pick(r, ["team away", "away", "away team", "team_away"])
+        ).trim();
+  
+        const home = String(
+          pick(r, ["team home", "home", "home team", "team_home"])
+        ).trim();
+  
+        const complete = isYes(
+          pick(r, ["game complete (yes, no)", "game complete", "complete", "final"])
+        );
+  
+        const startTime = String(
+          pick(r, [
+            "game start time (if text display the text otherwise displays time)",
+            "game start time",
+            "start time",
+            "time",
+          ])
+        ).trim();
+  
+        const scoreHome = toScore(pick(r, ["score home", "home score"]));
+        const scoreAway = toScore(pick(r, ["score away", "away score"]));
+  
+        if (!week || !away || !home) return null;
+  
+        return {
+          week,
+          away,
+          home,
+          complete,
+          startTime,
+          scoreHome,
+          scoreAway,
+        };
+      })
+      .filter(Boolean);
+  
+    return games;
+  }
+  
+  function renderSchedule(games) {
+    if (!els.scheduleFeed) return;
+    els.scheduleFeed.innerHTML = "";
+  
+    if (!games || !games.length) {
+      if (els.scheduleEmpty) els.scheduleEmpty.hidden = false;
+      setLoading(els.scheduleLoading, false);
+      toggleError(els.scheduleError, false);
+      if (els.scheduleStatus) els.scheduleStatus.textContent = "No games";
+      return;
+    }
+    if (els.scheduleEmpty) els.scheduleEmpty.hidden = true;
+  
+    // Group by week
+    const byWeek = new Map();
+    games.forEach((g) => {
+      if (!byWeek.has(g.week)) byWeek.set(g.week, []);
+      byWeek.get(g.week).push(g);
+    });
+  
+    const weeks = Array.from(byWeek.keys()).sort((a, b) => a - b);
+    const frag = document.createDocumentFragment();
+  
+    weeks.forEach((week) => {
+      const weekCard = document.createElement("div");
+      weekCard.className = "bracket__round schedule-week";
+  
+      const title = document.createElement("div");
+      title.className = "bracket__round-title";
+      title.textContent = `Week ${week}`;
+  
+      const list = document.createElement("div");
+      list.className = "schedule-week__list";
+  
+      const weekGames = byWeek.get(week) || [];
+      weekGames.forEach((g) => list.appendChild(renderScheduleGame(g)));
+  
+      weekCard.appendChild(title);
+      weekCard.appendChild(list);
+      frag.appendChild(weekCard);
+    });
+  
+    els.scheduleFeed.appendChild(frag);
+  }
+  
+  function renderScheduleGame(game) {
+    const wrap = document.createElement("div");
+    wrap.className = "schedule-game";
+  
+    const teams = document.createElement("div");
+    teams.className = "schedule-game__teams";
+  
+    const complete = Boolean(game.complete);
+    const awayScore = game.scoreAway;
+    const homeScore = game.scoreHome;
+  
+    let awayState = "none";
+    let homeState = "none";
+  
+    if (complete && awayScore != null && homeScore != null) {
+      if (awayScore > homeScore) {
+        awayState = "winner";
+        homeState = "loser";
+      } else if (homeScore > awayScore) {
+        homeState = "winner";
+        awayState = "loser";
+      }
+    }
+  
+    teams.appendChild(scheduleTeamChip(game.away, "Away", awayState));
+    teams.appendChild(scheduleTeamChip(game.home, "Home", homeState));
+  
+    const meta = document.createElement("div");
+    meta.className = "schedule-game__meta";
+  
+    const left = document.createElement("div");
+    left.className = "schedule-score";
+  
+    const timePill = document.createElement("span");
+    timePill.className = "pill pill--accent";
+    timePill.textContent = game.startTime || "TBD";
+  
+    const statusPill = document.createElement("span");
+    statusPill.className = complete ? "pill pill--warning" : "pill";
+    statusPill.textContent = complete ? "FINAL" : "SCHEDULED";
+  
+    left.appendChild(timePill);
+    left.appendChild(statusPill);
+  
+    const right = document.createElement("div");
+    right.className = "schedule-score";
+  
+    const scoreLabel = document.createElement("span");
+    scoreLabel.className = "schedule-score__label";
+    scoreLabel.textContent = "Score";
+  
+    const scoreVal = document.createElement("span");
+    scoreVal.className = "schedule-score__value";
+    scoreVal.textContent =
+      awayScore == null && homeScore == null ? "—" : `${awayScore ?? "—"}–${homeScore ?? "—"}`;
+  
+    right.appendChild(scoreLabel);
+    right.appendChild(scoreVal);
+  
+    meta.appendChild(left);
+    meta.appendChild(right);
+  
+    wrap.appendChild(teams);
+    wrap.appendChild(meta);
+  
+    return wrap;
+  }
+  
+  function scheduleTeamChip(teamRaw, label, winnerState /* "winner" | "loser" | "none" */) {
+    const teamInfo = resolveTeam(teamRaw);
+    const chip = document.createElement("div");
+    chip.className = "seed-chip";
+  
+    if (winnerState === "winner") chip.classList.add("seed-chip--winner");
+    if (winnerState === "loser") chip.classList.add("seed-chip--eliminated");
+  
+    const logo = document.createElement("div");
+    logo.className = "seed-chip__logo";
+    setLogo(logo, teamInfo.logoKey);
+  
+    const meta = document.createElement("div");
+    meta.className = "seed-chip__meta";
+  
+    const name = document.createElement("div");
+    name.className = "seed-chip__name";
+    name.textContent = teamInfo.displayName;
+  
+    const sub = document.createElement("div");
+    sub.className = "seed-chip__seed";
+    sub.textContent = label;
+  
+    meta.appendChild(name);
+    meta.appendChild(sub);
+  
+    chip.appendChild(logo);
+    chip.appendChild(meta);
+  
+    return chip;
+  }
+
 
   // =======================
   // PARSING
