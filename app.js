@@ -1681,7 +1681,7 @@
 
     const footer = document.createElement("div");
     footer.className = "bracket__footer";
-    footer.appendChild(buildEliminationNotice(seed5));
+    footer.appendChild(buildEliminationNotice(seed5, seed6));
     if (semiOneResult) footer.appendChild(buildSemiRecap(semiOneWinner, semiOneLoser, semiOneScore, "Semi #1 result"));
     if (semiTwoResult) footer.appendChild(buildSemiRecap(semiTwoWinner, semiTwoLoser, semiTwoScore, "Semi #2 result"));
     els.bracketDiagram.appendChild(footer);
@@ -1783,10 +1783,10 @@
     return card;
   }
 
-  function buildEliminationNotice(seed5) {
+  function buildEliminationNotice(seed5,seed6) {
     const eliminated = document.createElement("div");
     eliminated.className = "bracket__eliminated";
-    eliminated.textContent = seed5
+    eliminated.textContent = seed5,seed6
       ? `Seed ${seed5.seed} (${resolveTeam(seed5.team).displayName}) was eliminated`
       ? `Seed ${seed6.seed} (${resolveTeam(seed6.team).displayName}) was eliminated`
       : "Waiting on updated seeds…";
