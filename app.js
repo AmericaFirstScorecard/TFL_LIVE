@@ -1659,7 +1659,7 @@
       title: "Tate Super Bowl",
       leftSeed: hasSemiOneResult ? semiOneWinner : null,
       rightSeed: hasSemiTwoResult ? semiTwoWinner : null,
-      awaitingLabelRight: seed2 && seed3 ? "Winner of Semifinal #2" : "Awaiting #2/#3 winner",
+      awaitingLabelRight: seed2 && seed3 ? "" : "",
       semiOneResult,
       semiTwoResult,
     });
