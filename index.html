@@ -40,6 +40,7 @@
         <a href="#standings" class="nav__item" data-tab="standings">Standings</a>
         <a href="#news" class="nav__item" data-tab="news">News</a>
         <a href="#bracket" class="nav__item" data-tab="bracket">Tate Bowl Bracket</a>
+        <a href="#schedule" class="nav__item" data-tab="schedule">Schedule</a>
       </nav>
       <div class="meta">Auto-refreshing every 30 seconds</div>
     </header>
@@ -221,6 +222,24 @@
             <div class="state state--loading" id="standingsLoading">Loading standings…</div>
             <div class="state state--error" id="standingsError" hidden>Unable to load standings.</div>
           </div>
+        </div>
+      </section>
+
+      <section id="tab-schedule" class="tab" aria-labelledby="Schedule view">
+        <div class="panel">
+          <div class="panel__header">
+            <div>
+              <div class="chart-card__title">Schedule</div>
+              <div class="chart-card__subtitle">Week-by-week matchups pulled live from the sheet</div>
+            </div>
+            <div class="badge badge--ghost" id="scheduleStatus">Loading…</div>
+          </div>
+      
+          <div class="schedule" id="scheduleFeed"></div>
+      
+          <div class="state state--loading" id="scheduleLoading">Loading schedule…</div>
+          <div class="state state--error" id="scheduleError" hidden>Unable to load schedule. Retrying…</div>
+          <div class="state state--empty" id="scheduleEmpty" hidden>No schedule found.</div>
         </div>
       </section>
 
