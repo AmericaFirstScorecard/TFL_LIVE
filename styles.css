@@ -1384,4 +1384,83 @@ body {
     flex: 1;
     text-align: center;
   }
+    /* =========================
+     SCHEDULE TAB
+     ========================= */
+  
+  .schedule {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 12px;
+  }
+  
+  .schedule-week {
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(15, 23, 42, 0.8));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .schedule-week__list {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  
+  .schedule-game {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    display: grid;
+    gap: 10px;
+  }
+  
+  .schedule-game__teams {
+    display: grid;
+    gap: 8px;
+  }
+  
+  .schedule-game__meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  
+  .schedule-logo--text {
+    display: grid;
+    place-items: center;
+    font-weight: 900;
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    color: rgba(255, 255, 255, 0.78);
+  }
+  
+  .schedule-score {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+  }
+  
+  .schedule-score__label {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  
+  .schedule-score__value {
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.06);
+    font-weight: 900;
+  }
 }
