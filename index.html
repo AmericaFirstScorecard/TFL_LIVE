@@ -26,16 +26,16 @@
   <meta name="twitter:image" content="https://www.tatefblive.com/logos/TateFBLiveEmbed.png">
   <meta name="twitter:image:alt" content="Tate Football League live games, stats, and MVP race.">
   <link rel="stylesheet" href="styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <div class="page">
     <header class="hero">
       <div class="brand">TFL Live Monitor</div>
       <nav class="nav" aria-label="Primary">
-        <a href="#win" class="nav__item nav__item--active" data-tab="win">Win Prob</a>
+        <a href="#win" class="nav__item nav__item--active" data-tab="win" aria-current="page">Win Prob</a>
         <a href="#mvp" class="nav__item" data-tab="mvp">MVP Odds</a>
         <a href="#standings" class="nav__item" data-tab="standings">Standings</a>
         <a href="#news" class="nav__item" data-tab="news">News</a>
@@ -46,7 +46,7 @@
     </header>
 
     <main>
-      <section id="tab-win" class="tab tab--active" aria-labelledby="Win Probability view">
+      <section id="tab-win" class="tab tab--active" aria-label="Win Probability view">
         <div class="panel" id="winPanel">
           <div class="panel__header">
             <div class="badge" id="gameStatus">Loading…</div>
@@ -163,7 +163,7 @@
         </div>
       </section>
 
-      <section id="tab-mvp" class="tab" aria-labelledby="MVP Odds view">
+      <section id="tab-mvp" class="tab" aria-label="MVP Odds view">
         <div class="panel">
           <div class="panel__header">
             <div>
@@ -197,7 +197,7 @@
         </div>
       </section>
 
-      <section id="tab-standings" class="tab" aria-labelledby="Standings view">
+      <section id="tab-standings" class="tab" aria-label="Standings view">
         <div class="panel">
           <div class="panel__header">
             <div class="chart-card__title">Standings</div>
@@ -225,7 +225,7 @@
         </div>
       </section>
 
-      <section id="tab-schedule" class="tab" aria-labelledby="Schedule view">
+      <section id="tab-schedule" class="tab" aria-label="Schedule view">
         <div class="panel">
           <div class="panel__header">
             <div>
@@ -234,16 +234,16 @@
             </div>
             <div class="badge badge--ghost" id="scheduleStatus">Loading…</div>
           </div>
-      
+
           <div class="schedule" id="scheduleFeed"></div>
-      
+
           <div class="state state--loading" id="scheduleLoading">Loading schedule…</div>
           <div class="state state--error" id="scheduleError" hidden>Unable to load schedule. Retrying…</div>
           <div class="state state--empty" id="scheduleEmpty" hidden>No schedule found.</div>
         </div>
       </section>
 
-      <section id="tab-news" class="tab" aria-labelledby="News view">
+      <section id="tab-news" class="tab" aria-label="News view">
         <div class="panel">
           <div class="panel__header">
             <div class="chart-card__title">League News</div>
@@ -256,7 +256,7 @@
         </div>
       </section>
 
-      <section id="tab-bracket" class="tab" aria-labelledby="Tate Bowl Bracket view">
+      <section id="tab-bracket" class="tab" aria-label="Tate Bowl Bracket view">
         <div class="panel">
           <div class="panel__header">
             <div>
@@ -301,6 +301,6 @@
       </div>
     </div>
   </div>
-  <script src="app.js"></script>
+  <script defer src="app.js"></script>
 </body>
 </html>
