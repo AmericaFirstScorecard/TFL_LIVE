@@ -743,15 +743,54 @@
   
     return games;
   }
-  
-  function renderSchedule(games) function renderScheduleGame(game) {
+
+  function renderSchedule(games) {
+    if (!els.scheduleFeed) return;
+
+    els.scheduleFeed.innerHTML = "";
+
+    if (!Array.isArray(games) || games.length === 0) {
+      if (els.scheduleEmpty) els.scheduleEmpty.hidden = false;
+      if (els.scheduleStatus) els.scheduleStatus.textContent = "No games";
+      return;
+    }
+
+    if (els.scheduleEmpty) els.scheduleEmpty.hidden = true;
+
+    // sort by week, then by startTime (best-effort)
+    const sorted = [...games].sort((a, b) => {
+      const w = (a.week ?? 0) - (b.week ?? 0);
+      if (w !== 0) return w;
+      return String(a.startTime || "").localeCompare(String(b.startTime || ""));
+    });
+
+    const frag = document.createDocumentFragment();
+    let currentWeek = null;
+
+    for (const game of sorted) {
+      if (game.week !== currentWeek) {
+        currentWeek = game.week;
+        const header = document.createElement("div");
+        header.className = "scheduleWeekHeader";
+        header.textContent = `Week ${currentWeek}`;
+        frag.appendChild(header);
+      }
+
+      frag.appendChild(renderScheduleGame(game));
+    }
+
+    els.scheduleFeed.appendChild(frag);
+  }
+
+  function renderScheduleGame(game) {
     const complete = Boolean(game.complete);
-  
+
     const awayScore = game.scoreAway;
     const homeScore = game.scoreHome;
-  
+
     let awayState = "none";
     let homeState = "none";
+
     if (complete && awayScore != null && homeScore != null) {
       if (awayScore > homeScore) {
         awayState = "winner";
@@ -761,94 +800,91 @@
         awayState = "loser";
       }
     }
-  
+
     const status = complete ? "FINAL" : "SCHEDULED";
     const time = game.startTime || "TBD";
-  
+
     const hasScore = Number.isFinite(+awayScore) && Number.isFinite(+homeScore);
     const scoreText = hasScore ? `${awayScore}–${homeScore}` : "—";
-    const showScore = status !== "SCHEDULED"; // change if you want score always shown
-  
+    const showScore = status !== "SCHEDULED";
+
     const awayRec = getScheduleRecordShort(game.away);
     const homeRec = getScheduleRecordShort(game.home);
-  
+
     const card = document.createElement("div");
     card.className = "gameCard";
-  
-    // left: matchup line
+
     const matchup = document.createElement("div");
     matchup.className = "matchupLine";
-  
+
     matchup.appendChild(scheduleTeamInline(game.away, awayRec, awayState));
-  
+
     const at = document.createElement("div");
     at.className = "atChip";
     at.textContent = "@";
     matchup.appendChild(at);
-  
+
     matchup.appendChild(scheduleTeamInline(game.home, homeRec, homeState));
-  
-    // right: meta column
+
     const meta = document.createElement("div");
     meta.className = "gameMeta";
-  
+
     const pillRow = document.createElement("div");
     pillRow.className = "pillRow";
-  
+
     const timePill = document.createElement("span");
-    // keep your existing pill system
     timePill.className = "pill pill--accent";
     timePill.textContent = time;
-  
+
     const statusPill = document.createElement("span");
     statusPill.className = complete ? "pill pill--warning" : "pill";
     statusPill.textContent = status;
-  
+
     pillRow.appendChild(timePill);
     pillRow.appendChild(statusPill);
-  
+
     const score = document.createElement("div");
     score.className = "scoreText";
     score.textContent = showScore ? scoreText : "";
-  
+
     meta.appendChild(pillRow);
     meta.appendChild(score);
-  
+
     card.appendChild(matchup);
     card.appendChild(meta);
-  
+
     return card;
   }
-  
+
   function scheduleTeamInline(teamRaw, rec, winnerState /* "winner" | "loser" | "none" */) {
     const teamInfo = resolveTeam(teamRaw);
-  
+
     const wrap = document.createElement("div");
     wrap.className = "teamInline";
     if (winnerState === "winner") wrap.classList.add("teamInline--winner");
     if (winnerState === "loser") wrap.classList.add("teamInline--loser");
-  
+
     const logo = document.createElement("div");
     logo.className = "teamLogo";
     setLogo(logo, teamInfo.logoKey);
-  
+
     const text = document.createElement("div");
     text.className = "teamText";
-  
+
     const name = document.createElement("div");
     name.className = "teamName";
     name.textContent = teamInfo.displayName;
-  
+
     const record = document.createElement("div");
     record.className = "teamRecord";
     record.textContent = rec || "";
-  
+
     text.appendChild(name);
     text.appendChild(record);
-  
+
     wrap.appendChild(logo);
     wrap.appendChild(text);
-  
+
     return wrap;
   }
 
