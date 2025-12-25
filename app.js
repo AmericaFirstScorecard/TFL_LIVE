@@ -800,23 +800,36 @@
   function renderScheduleGame(game) {
     const wrap = document.createElement("div");
     wrap.className = "schedule-game";
-
+  
     const teams = document.createElement("div");
     teams.className = "schedule-game__teams";
-
-    const complete = Boolean(game.complete);
+  
+    const isFinal = Boolean(game.complete);
     const awayScore = game.scoreAway;
     const homeScore = game.scoreHome;
-
-    teams.appendChild(scheduleTeamChip(game.away, "Away", awayState, awayScore));
-
+  
+    let awayState = "none";
+    let homeState = "none";
+  
+    if (isFinal && awayScore != null && homeScore != null) {
+      if (awayScore > homeScore) {
+        awayState = "winner";
+        homeState = "loser";
+      } else if (homeScore > awayScore) {
+        homeState = "winner";
+        awayState = "loser";
+      }
+    }
+  
+    teams.appendChild(scheduleTeamChip(game.away, "Away", awayState, awayScore, isFinal));
+  
     const connectorA = document.createElement("div");
     connectorA.className = "schedule__connector";
     connectorA.textContent = "vs";
     connectorA.style.textAlign = "center";
     teams.appendChild(connectorA);
-    
-    teams.appendChild(scheduleTeamChip(game.home, "Home", homeState));
+  
+    teams.appendChild(scheduleTeamChip(game.home, "Home", homeState, homeScore, isFinal));
   
     const meta = document.createElement("div");
     meta.className = "schedule-game__meta";
@@ -831,14 +844,14 @@
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
     timePill.textContent = game.startTime || "TBD";
-
-    const divider = document.createElement("span"); // <span></span> empty span
+  
+    const divider = document.createElement("span");
     divider.style.display = "inline-block";
     divider.style.width = "10px";
   
     const statusPill = document.createElement("span");
-    statusPill.className = complete ? "pill pill--warning" : "pill";
-    statusPill.textContent = complete ? "FINAL" : "SCHEDULED";
+    statusPill.className = isFinal ? "pill pill--warning" : "pill";
+    statusPill.textContent = isFinal ? "FINAL" : "SCHEDULED";
   
     center.appendChild(timePill);
     center.appendChild(divider);
@@ -851,8 +864,9 @@
   
     return wrap;
   }
+
   
-  function scheduleTeamChip(teamRaw, label, winnerState /* "winner" | "loser" | "none" */, teamScore) {
+  function scheduleTeamChip(teamRaw, label, winnerState, teamScore,isFinal) {
     const teamInfo = resolveTeam(teamRaw);
 
     const standing = findTeamRecord(teamRaw, teamInfo.displayName, teamInfo.canonicalKey);
