@@ -927,7 +927,7 @@
     scorea.className = "schedule-score-away";
     scorea.textContent = awayScore
     scorea.style.Border = "1px"
-  
+    
     chip.appendChild(logo);
     chip.appendChild(meta);
   
