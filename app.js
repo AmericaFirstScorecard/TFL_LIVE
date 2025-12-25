@@ -860,24 +860,7 @@
     center.appendChild(divider);
     center.appendChild(statusPill);
   
-    // Right: score
-    const right = document.createElement("div");
-    right.className = "schedule-game__score";
-  
-    const scoreLabel = document.createElement("span");
-    scoreLabel.className = "schedule-game__label";
-    scoreLabel.textContent = "Score ";
-  
-    const scoreVal = document.createElement("span");
-    scoreVal.className = "schedule-game__value";
-    scoreVal.textContent =
-      awayScore == null && homeScore == null ? "—" : `${awayScore ?? "—"}–${homeScore ?? "—"}`;
-  
-    right.appendChild(scoreLabel);
-    right.appendChild(scoreVal);
-  
     meta.appendChild(center);
-    meta.appendChild(right);
   
     wrap.appendChild(teams);
     wrap.appendChild(meta);
