@@ -743,9 +743,54 @@
     return games;
   }
   
+  function renderSchedule(games) {
+    if (!els.scheduleFeed) return;
+    els.scheduleFeed.innerHTML = "";
+  
+    if (!games || !games.length) {
+      if (els.scheduleEmpty) els.scheduleEmpty.hidden = false;
+      setLoading(els.scheduleLoading, false);
+      toggleError(els.scheduleError, false);
+      if (els.scheduleStatus) els.scheduleStatus.textContent = "No games";
+      return;
+    }
+    if (els.scheduleEmpty) els.scheduleEmpty.hidden = true;
+  
+    // Group by week
+    const byWeek = new Map();
+    games.forEach((g) => {
+      if (!byWeek.has(g.week)) byWeek.set(g.week, []);
+      byWeek.get(g.week).push(g);
+    });
+  
+    const weeks = Array.from(byWeek.keys()).sort((a, b) => a - b);
+    const frag = document.createDocumentFragment();
+  
+    weeks.forEach((week) => {
+      const weekCard = document.createElement("div");
+      weekCard.className = "bracket__round schedule-week";
+  
+      const title = document.createElement("div");
+      title.className = "bracket__round-title";
+      title.textContent = `Week ${week}`;
+  
+      const list = document.createElement("div");
+      list.className = "schedule-week__list";
+  
+      const weekGames = byWeek.get(week) || [];
+      weekGames.forEach((g) => list.appendChild(renderScheduleGame(g)));
+  
+      weekCard.appendChild(title);
+      weekCard.appendChild(list);
+      frag.appendChild(weekCard);
+    });
+  
+    els.scheduleFeed.appendChild(frag);
+  }
+  
   function renderScheduleGame(game) {
     const wrap = document.createElement("div");
-    wrap.className = "schedule-game"; // ✅ change this (new wrapper class)
+    wrap.className = "schedule-game__meta";
   
     const teams = document.createElement("div");
     teams.className = "schedule-game__teams";
@@ -758,58 +803,115 @@
     let homeState = "none";
   
     if (complete && awayScore != null && homeScore != null) {
-      if (awayScore > homeScore) { awayState = "winner"; homeState = "loser"; }
-      else if (homeScore > awayScore) { homeState = "winner"; awayState = "loser"; }
+      if (awayScore > homeScore) {
+        awayState = "winner";
+        homeState = "loser";
+      } else if (homeScore > awayScore) {
+        homeState = "winner";
+        awayState = "loser";
+      }
     }
   
     teams.appendChild(scheduleTeamChip(game.away, "Away", awayState));
     teams.appendChild(scheduleTeamChip(game.home, "Home", homeState));
   
     const meta = document.createElement("div");
-    meta.className = "schedule-game__meta"; // ✅ keep meta here
-  
+    meta.className = "schedule-game__meta";
+    
+    // ONE parent container
     const scoreRow = document.createElement("div");
     scoreRow.className = "schedule-score";
-  
+    
+    // left group (time + status)
     const leftGroup = document.createElement("div");
     leftGroup.className = "schedule-score__left";
-  
+    
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
     timePill.textContent = game.startTime || "TBD";
-  
+    
+    const emptySpan = document.createElement("span");
+    emptySpan.style.display = "inline-block";
+    emptySpan.style.width = "8px";
+    
     const statusPill = document.createElement("span");
     statusPill.className = complete ? "pill pill--warning" : "pill";
     statusPill.textContent = complete ? "FINAL" : "SCHEDULED";
-  
+    
     leftGroup.appendChild(timePill);
+    leftGroup.appendChild(emptySpan);
     leftGroup.appendChild(statusPill);
-  
+    
+    // right group (Score — 21–14)
     const rightGroup = document.createElement("div");
     rightGroup.className = "schedule-score__right";
-  
+    
     const scoreLabel = document.createElement("span");
     scoreLabel.className = "schedule-game__label";
     scoreLabel.textContent = "Score ";
-  
+    
     const scoreVal = document.createElement("span");
     scoreVal.className = "schedule-game__value";
     scoreVal.textContent =
       awayScore == null && homeScore == null ? "—" : `${awayScore ?? "—"}–${homeScore ?? "—"}`;
-  
+    
     rightGroup.appendChild(scoreLabel);
     rightGroup.appendChild(scoreVal);
-  
+    
+    // put BOTH groups under .schedule-score
     scoreRow.appendChild(leftGroup);
     scoreRow.appendChild(rightGroup);
-  
+    
     meta.appendChild(scoreRow);
-  
+    
     wrap.appendChild(teams);
     wrap.appendChild(meta);
-  
+    
     return wrap;
   }
+  
+  function scheduleTeamChip(teamRaw, label, winnerState /* "winner" | "loser" | "none" */) {
+    const teamInfo = resolveTeam(teamRaw);
+  
+    // Pull record from standings (works once MVP/standings have loaded)
+    const standing = findTeamRecord(teamRaw, teamInfo.displayName, teamInfo.canonicalKey);
+    const recordText = standing ? formatRecord(standing) : "—"; // or "Record —"
+  
+    const chip = document.createElement("div");
+    chip.className = "seed-chip";
+  
+    if (winnerState === "winner") chip.classList.add("seed-chip--winner");
+    if (winnerState === "loser") chip.classList.add("seed-chip--eliminated");
+  
+    const logo = document.createElement("div");
+    logo.className = "seed-chip__logo";
+    setLogo(logo, teamInfo.logoKey);
+  
+    const meta = document.createElement("div");
+    meta.className = "seed-chip__meta";
+  
+    const name = document.createElement("div");
+    name.className = "seed-chip__name";
+    name.textContent = teamInfo.displayName;
+  
+    const seed = document.createElement("div");
+    seed.className = "seed-chip__seed";
+    seed.textContent = label; // "Away" / "Home"
+  
+    const rec = document.createElement("div");
+    rec.className = "schedule-team__record";
+    rec.textContent = recordText;
+  
+    meta.appendChild(name);
+    meta.appendChild(seed);
+    meta.appendChild(rec);
+  
+    chip.appendChild(logo);
+    chip.appendChild(meta);
+  
+    return chip;
+  }
+
 
   // =======================
   // PARSING
