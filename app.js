@@ -825,14 +825,16 @@
     timePill.className = "pill pill--accent";
     timePill.textContent = game.startTime || "TBD";
 
-    const emptySpan = document.createElement("span");
-    emptySpan.style.display = "inline-block";
-    emptySpan.style.width = "8px";
+    const emptySpan = document.createElement("span"); // <span></span>
   
     const statusPill = document.createElement("span");
     statusPill.className = complete ? "pill pill--warning" : "pill";
     statusPill.textContent = complete ? "FINAL" : "SCHEDULED";
-
+  
+    left.appendChild(timePill);
+    left.appendChild(emptySpan);
+    left.appendChild(statusPill);
+  
     const right = document.createElement("div");
     right.className = "schedule-game__score";
   
@@ -845,9 +847,6 @@
     scoreVal.textContent =
       awayScore == null && homeScore == null ? "—" : `${awayScore ?? "—"}–${homeScore ?? "—"}`;
   
-    left.appendChild(timePill);
-    left.appendChild(emptySpan);
-    left.appendChild(statusPill);
     right.appendChild(scoreLabel);
     right.appendChild(scoreVal);
   
