@@ -830,8 +830,6 @@
     // Left: time + status pills
     const center = document.createElement("div");
     center.className = "schedule-game__pills";
-    center.style.marginright = 'auto%';
-    center.style.marginleft = 'auto';
   
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
@@ -850,6 +848,7 @@
     center.appendChild(timePill);
     center.appendChild(divider);
     center.appendChild(statusPill);
+    center.style.marginleft = "5px"
   
     // Right: score
     const right = document.createElement("div");
@@ -866,6 +865,7 @@
   
     right.appendChild(scoreLabel);
     right.appendChild(scoreVal);
+    right.style.maringleft = "5px"
   
     meta.appendChild(center);
     meta.appendChild(right);
