@@ -828,14 +828,16 @@
     meta.className = "schedule-game__meta";
   
     // Left: time + status pills
-    const left = document.createElement("div");
-    left.className = "schedule-game__pills"; // style with gap in CSS if you want
+    const center = document.createElement("div");
+    center.className = "schedule-game__pills";
+    center.style.marginright = 'auto%';
+    center.style.marginleft = 'auto';
   
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
     timePill.textContent = game.startTime || "TBD";
 
-    const divider = document.createElement("span"); // <span></span>
+    const divider = document.createElement("span"); // <span></span> empty span
     divider.style.display = "inline-block";
     divider.style.width = "10px";
     divider.style.height = "25px";
