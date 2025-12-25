@@ -1330,7 +1330,7 @@ body {
 
 .seed-chip__meta {
   display: flex;
-  flex-direction: column;
+  flex-direction: rows;
   gap: 2px;
 }
 
