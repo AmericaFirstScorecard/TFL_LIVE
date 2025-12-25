@@ -918,7 +918,7 @@
     name.appendChild(rec);
     meta.appendChild(name);
 
-    const scoreh = document.createElment("div");
+    const scoreh = document.createElement("div");
     scoreh.className = "schedule-score-home";
     scoreh.textConent = homeScore
     scoreh.style.Border = "1px"
