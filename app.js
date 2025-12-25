@@ -867,7 +867,7 @@
     right.appendChild(scoreLabel);
     right.appendChild(scoreVal);
   
-    meta.appendChild(left);
+    meta.appendChild(center);
     meta.appendChild(right);
   
     wrap.appendChild(teams);
