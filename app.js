@@ -616,11 +616,16 @@
   }
 
   // =======================
-  // SCHEDULE TAB
+  // SCHEDULE TAB (FULL BLOCK)
   // =======================
+  // Assumes these already exist elsewhere in your file:
+  // els, state, SCHEDULE_CSV_URL, overrideUrl, fetchText, d3, parseNumber,
+  // setLoading, toggleError, showError,
+  // resolveTeam, findTeamRecord, formatRecord, setLogo
+  
   async function fetchSchedule() {
     // If the schedule tab doesn't exist in the DOM, don't do anything.
-    if (!els.scheduleFeed) return;
+    if (!els?.scheduleFeed) return;
   
     setLoading(els.scheduleLoading, true);
     toggleError(els.scheduleError, false);
@@ -628,6 +633,8 @@
     if (els.scheduleStatus) els.scheduleStatus.textContent = "Loading…";
   
     const requestId = Date.now();
+  
+    // Cancel any in-flight schedule request
     if (state.scheduleAbortController) state.scheduleAbortController.abort();
     const controller = new AbortController();
     state.scheduleAbortController = controller;
@@ -636,7 +643,9 @@
   
     try {
       const text = await fetchText(url, controller.signal);
-      if (requestId < state.scheduleVersion) return;
+  
+      // Ignore stale responses
+      if (requestId < (state.scheduleVersion || 0)) return;
   
       const games = parseScheduleCSV(text);
   
@@ -648,17 +657,20 @@
   
       setLoading(els.scheduleLoading, false);
       toggleError(els.scheduleError, false);
-      if (els.scheduleStatus) els.scheduleStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      if (els.scheduleStatus) {
+        els.scheduleStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      }
     } catch (err) {
       if (err?.name === "AbortError") return;
       console.error("[schedule]", err);
   
-      if (requestId >= state.scheduleVersion) {
+      // Only show error if this is the latest request
+      if (requestId >= (state.scheduleVersion || 0)) {
         state.scheduleVersion = requestId;
         if (state.scheduleAbortController === controller) state.scheduleAbortController = null;
   
         setLoading(els.scheduleLoading, false);
-        showError(els.scheduleError, `Schedule feed error: ${err.message}`);
+        showError(els.scheduleError, `Schedule feed error: ${err?.message || String(err)}`);
         if (els.scheduleStatus) els.scheduleStatus.textContent = "Error";
       }
     }
@@ -670,7 +682,9 @@
   
     const normRow = (obj) => {
       const out = {};
-      for (const [k, v] of Object.entries(obj)) out[String(k).trim().toLowerCase()] = v;
+      for (const [k, v] of Object.entries(obj || {})) {
+        out[String(k).trim().toLowerCase()] = v;
+      }
       return out;
     };
   
@@ -692,23 +706,19 @@
       return Number.isFinite(n) ? n : null;
     };
   
-    const isYes = (v) => String(v ?? "").trim().toLowerCase() === "yes";
+    const isYes = (v) => {
+      const s = String(v ?? "").trim().toLowerCase();
+      return s === "yes" || s === "y" || s === "true" || s === "1";
+    };
   
-    const games = rows
+    return rows
       .map((row) => {
         const r = normRow(row);
   
-        const week = toInt(
-          pick(r, ["round #", "round", "week", "wk", "w"])
-        );
+        const week = toInt(pick(r, ["round #", "round", "week", "wk", "w"]));
   
-        const away = String(
-          pick(r, ["team away", "away", "away team", "team_away"])
-        ).trim();
-  
-        const home = String(
-          pick(r, ["team home", "home", "home team", "team_home"])
-        ).trim();
+        const away = String(pick(r, ["team away", "away", "away team", "team_away"])).trim();
+        const home = String(pick(r, ["team home", "home", "home team", "team_home"])).trim();
   
         const complete = isYes(
           pick(r, ["game complete (yes, no)", "game complete", "complete", "final"])
@@ -739,12 +749,10 @@
         };
       })
       .filter(Boolean);
-  
-    return games;
   }
   
   function renderSchedule(games) {
-    if (!els.scheduleFeed) return;
+    if (!els?.scheduleFeed) return;
     els.scheduleFeed.innerHTML = "";
   
     if (!games || !games.length) {
@@ -758,15 +766,15 @@
   
     // Group by week
     const byWeek = new Map();
-    games.forEach((g) => {
+    for (const g of games) {
       if (!byWeek.has(g.week)) byWeek.set(g.week, []);
       byWeek.get(g.week).push(g);
-    });
+    }
   
     const weeks = Array.from(byWeek.keys()).sort((a, b) => a - b);
     const frag = document.createDocumentFragment();
   
-    weeks.forEach((week) => {
+    for (const week of weeks) {
       const weekCard = document.createElement("div");
       weekCard.className = "bracket__round schedule-week";
   
@@ -777,26 +785,27 @@
       const list = document.createElement("div");
       list.className = "schedule-week__list";
   
-      const weekGames = byWeek.get(week) || [];
-      weekGames.forEach((g) => list.appendChild(renderScheduleGame(g)));
+      for (const g of byWeek.get(week) || []) {
+        list.appendChild(renderScheduleGame(g));
+      }
   
       weekCard.appendChild(title);
       weekCard.appendChild(list);
       frag.appendChild(weekCard);
-    });
+    }
   
     els.scheduleFeed.appendChild(frag);
   }
   
   function renderScheduleGame(game) {
     const wrap = document.createElement("div");
-    wrap.className = "schedule-game__meta";
+    wrap.className = "schedule-game"; // ✅ wrapper (not schedule-game__meta)
   
     const teams = document.createElement("div");
     teams.className = "schedule-game__teams";
   
     const complete = Boolean(game.complete);
-    const awayScore = game.scoreAway;
+    const awayScore = game.scoreHome == null ? game.scoreAway : game.scoreAway; // keep naming consistent
     const homeScore = game.scoreHome;
   
     let awayState = "none";
@@ -818,23 +827,22 @@
     const meta = document.createElement("div");
     meta.className = "schedule-game__meta";
   
+    // Left: time + status pills
     const left = document.createElement("div");
-    left.className = "schedule-score";
+    left.className = "schedule-game__pills"; // style with gap in CSS if you want
   
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
     timePill.textContent = game.startTime || "TBD";
-
-    const emptySpan = document.createElement("span"); // <span></span>
   
     const statusPill = document.createElement("span");
     statusPill.className = complete ? "pill pill--warning" : "pill";
     statusPill.textContent = complete ? "FINAL" : "SCHEDULED";
   
     left.appendChild(timePill);
-    left.appendChild(emptySpan);
     left.appendChild(statusPill);
   
+    // Right: score
     const right = document.createElement("div");
     right.className = "schedule-game__score";
   
@@ -858,6 +866,51 @@
   
     return wrap;
   }
+  
+  function scheduleTeamChip(teamRaw, label, winnerState /* "winner" | "loser" | "none" */) {
+    const teamInfo = resolveTeam(teamRaw);
+  
+    // Pull record from standings (works once standings have loaded)
+    const standing = findTeamRecord(teamRaw, teamInfo.displayName, teamInfo.canonicalKey);
+    const recordText = standing ? formatRecord(standing) : "—";
+  
+    const chip = document.createElement("div");
+    chip.className = "seed-chip";
+  
+    if (winnerState === "winner") chip.classList.add("seed-chip--winner");
+    if (winnerState === "loser") chip.classList.add("seed-chip--eliminated");
+  
+    const logo = document.createElement("div");
+    logo.className = "seed-chip__logo";
+    setLogo(logo, teamInfo.logoKey);
+  
+    const meta = document.createElement("div");
+    meta.className = "seed-chip__meta";
+  
+    const name = document.createElement("div");
+    name.className = "seed-chip__name";
+    name.textContent = teamInfo.displayName;
+  
+    const seed = document.createElement("div");
+    seed.className = "seed-chip__seed";
+    seed.textContent = label; // "Away" / "Home"
+  
+    const rec = document.createElement("div");
+    rec.className = "schedule-team__record";
+    // If you want it to share the same styling as seed-chip__seed:
+    rec.classList.add("seed-chip__seed");
+    rec.textContent = recordText;
+  
+    meta.appendChild(name);
+    meta.appendChild(seed);
+    meta.appendChild(rec);
+  
+    chip.appendChild(logo);
+    chip.appendChild(meta);
+  
+    return chip;
+  }
+
   
   function scheduleTeamChip(teamRaw, label, winnerState /* "winner" | "loser" | "none" */) {
     const teamInfo = resolveTeam(teamRaw);
