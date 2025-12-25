@@ -843,6 +843,7 @@
     const statusPill = document.createElement("span");
     statusPill.className = complete ? "pill pill--warning" : "pill";
     statusPill.textContent = complete ? "FINAL" : "SCHEDULED";
+    statusPill.style.right = "5px"
   
     left.appendChild(timePill);
     left.appendChild(divider);
