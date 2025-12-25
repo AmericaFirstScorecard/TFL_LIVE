@@ -875,7 +875,6 @@
   
     return wrap;
   }
-
   
   function scheduleTeamChip(teamRaw, label, winnerState /* "winner" | "loser" | "none" */) {
     const teamInfo = resolveTeam(teamRaw);
@@ -910,8 +909,8 @@
     rec.textContent = recordText;
   
     meta.appendChild(name);
-    meta.appendChild(seed);
-    meta.appendChild(rec);
+    name.appendChild(seed);
+    name.appendChild(rec);
   
     chip.appendChild(logo);
     chip.appendChild(meta);
