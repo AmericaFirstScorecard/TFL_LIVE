@@ -826,15 +826,10 @@
   
     const meta = document.createElement("div");
     meta.className = "schedule-game__meta";
-    meta.style.height = "5px"
   
     // Left: time + status pills
     const left = document.createElement("div");
     left.className = "schedule-game__pills"; // style with gap in CSS if you want
-
-    const divider = document.createElement("div");
-    divider.className = "divider";
-    divider.style.width = "10px";
   
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
@@ -887,10 +882,6 @@
   
     const chip = document.createElement("div");
     chip.className = "seed-chip";
-
-    const divider = document.createElement("div");
-    divider.className = "divider";
-    divider.style.width = "10px";
   
     if (winnerState === "winner") chip.classList.add("seed-chip--winner");
     if (winnerState === "loser") chip.classList.add("seed-chip--eliminated");
