@@ -826,6 +826,7 @@
   
     const meta = document.createElement("div");
     meta.className = "schedule-game__meta";
+    meta.style.height = "5px"
   
     // Left: time + status pills
     const left = document.createElement("div");
