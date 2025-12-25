@@ -847,9 +847,9 @@
     statusPill.textContent = complete ? "FINAL" : "SCHEDULED";
     statusPill.style.right = "5px"
   
-    left.appendChild(timePill);
-    left.appendChild(divider);
-    left.appendChild(statusPill);
+    center.appendChild(timePill);
+    center.appendChild(divider);
+    center.appendChild(statusPill);
   
     // Right: score
     const right = document.createElement("div");
