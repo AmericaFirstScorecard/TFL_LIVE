@@ -799,18 +799,20 @@
   
   function renderScheduleGame(game) {
     const wrap = document.createElement("div");
-    wrap.className = "schedule-game"; // ✅ wrapper (not schedule-game__meta)
-  
+    wrap.className = "schedule-game";
+
     const teams = document.createElement("div");
     teams.className = "schedule-game__teams";
-  
+
     const complete = Boolean(game.complete);
-    const awayScore = game.scoreHome == null ? game.scoreAway : game.scoreAway; // keep naming consistent
+
+    // ✅ keep it simple / consistent with parseScheduleCSV
+    const awayScore = game.scoreAway;
     const homeScore = game.scoreHome;
-  
+
     let awayState = "none";
     let homeState = "none";
-  
+
     if (complete && awayScore != null && homeScore != null) {
       if (awayScore > homeScore) {
         awayState = "winner";
@@ -820,12 +822,13 @@
         awayState = "loser";
       }
     }
-  
-    teams.appendChild(scheduleTeamChip(game.away, "Away", awayState));
+
+    teams.appendChild(scheduleTeamChip(game.away, "Away", awayState, awayScore));
 
     const connectorA = document.createElement("div");
     connectorA.className = "schedule__connector";
     connectorA.textContent = "vs";
+    connectorA.style.textAlign = "center";
     teams.appendChild(connectorA);
     
     teams.appendChild(scheduleTeamChip(game.home, "Home", homeState));
@@ -836,10 +839,10 @@
     // Left: time + status pills
     const center = document.createElement("div");
     center.className = "schedule-game__pills";
-    center.style.marginLeft = "auto"
-    center.style.marginRight = "auto"
-    center.style.marginBottom = "5px"
-    center.style.marginTop = "5px"
+    center.style.marginLeft = "auto";
+    center.style.marginRight = "auto";
+    center.style.marginBottom = "5px";
+    center.style.marginTop = "5px";
   
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
@@ -882,48 +885,77 @@
     return wrap;
   }
   
-  function scheduleTeamChip(teamRaw, label, winnerState /* "winner" | "loser" | "none" */) {
+  function scheduleTeamChip(teamRaw, label, winnerState /* "winner" | "loser" | "none" */, teamScore) {
     const teamInfo = resolveTeam(teamRaw);
-  
-    // Pull record from standings (works once MVP/standings have loaded)
+
     const standing = findTeamRecord(teamRaw, teamInfo.displayName, teamInfo.canonicalKey);
-    const recordText = standing ? formatRecord(standing) : "—"; // or "Record —"
-  
+    const recordText = standing ? formatRecord(standing) : "—";
+
     const chip = document.createElement("div");
     chip.className = "seed-chip";
-  
+    chip.style.position = "relative"; // ✅ required for absolute score badge positioning
+
     if (winnerState === "winner") chip.classList.add("seed-chip--winner");
     if (winnerState === "loser") chip.classList.add("seed-chip--eliminated");
-  
+
     const logo = document.createElement("div");
     logo.className = "seed-chip__logo";
     setLogo(logo, teamInfo.logoKey);
-  
+
     const meta = document.createElement("div");
     meta.className = "seed-chip__meta";
-  
+    meta.style.paddingRight = "44px"; // ✅ leaves room so badge doesn't overlap text
+
     const name = document.createElement("div");
     name.className = "seed-chip__name";
     name.textContent = teamInfo.displayName;
-  
+
     const seed = document.createElement("div");
     seed.className = "seed-chip__seed";
-    seed.textContent = label; // "Away" / "Home"
-  
+    seed.textContent = label;
+
     const rec = document.createElement("div");
     rec.className = "schedule-team__record";
     rec.textContent = recordText;
-  
+
+    // ✅ SCORE BADGE (schscr)
+    const schscr = document.createElement("div");
+    schscr.className = "seed-chip__score"; // you can keep score-giver__meta if you want, but this is clearer
+    schscr.style.position = "absolute";
+    schscr.style.right = "8px";
+    schscr.style.top = "50%";
+    schscr.style.transform = "translateY(-50%)";
+    schscr.style.minWidth = "28px";
+    schscr.style.height = "22px";
+    schscr.style.padding = "0 8px";
+    schscr.style.borderRadius = "999px";
+    schscr.style.display = "flex";
+    schscr.style.alignItems = "center";
+    schscr.style.justifyContent = "center";
+    schscr.style.fontWeight = "700";
+    schscr.style.border = "1px solid rgba(255,255,255,0.18)";
+    schscr.style.background = "rgba(255,255,255,0.08)";
+
+    // ✅ hide when blank/null; show otherwise
+    if (teamScore == null || teamScore === "") {
+      schscr.hidden = true;
+      schscr.textContent = "";
+    } else {
+      schscr.hidden = false;
+      schscr.textContent = String(teamScore);
+    }
+
+    // build tree
     name.appendChild(seed);
     name.appendChild(rec);
     meta.appendChild(name);
-    
+
     chip.appendChild(logo);
     chip.appendChild(meta);
-  
+    chip.appendChild(schscr);
+
     return chip;
   }
-
 
   // =======================
   // PARSING
