@@ -908,9 +908,9 @@
     rec.className = "schedule-team__record";
     rec.textContent = recordText;
   
-    meta.appendChild(name);
     name.appendChild(seed);
     name.appendChild(rec);
+    meta.appendChild(name);
   
     chip.appendChild(logo);
     chip.appendChild(meta);
