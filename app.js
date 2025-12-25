@@ -834,6 +834,10 @@
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
     timePill.textContent = game.startTime || "TBD";
+
+    const divider = document.createElement("span"); // <span></span>
+    divider.style.display = "inline-block";
+    divider.style.width = "10px";
   
     const statusPill = document.createElement("span");
     statusPill.className = complete ? "pill pill--warning" : "pill";
