@@ -822,6 +822,12 @@
     }
   
     teams.appendChild(scheduleTeamChip(game.away, "Away", awayState));
+
+    const connectorA = document.createElement("div");
+    connectorA.className = "schedule__connector";
+    connectorA.textContent = "vs";
+    teams.appendChild(connectorA);
+    
     teams.appendChild(scheduleTeamChip(game.home, "Home", homeState));
   
     const meta = document.createElement("div");
@@ -911,6 +917,16 @@
     name.appendChild(seed);
     name.appendChild(rec);
     meta.appendChild(name);
+
+    const scoreh = document.createElment("div");
+    scoreh.className = "schedule-score-home";
+    scoreh.textConent = homeScore
+    scoreh.style.Border = "1px"
+
+    const scorea = document.createElement("div");
+    scorea.className = "schedule-score-away";
+    scorea.textContent = awayScore
+    scorea.style.Border = "1px"
   
     chip.appendChild(logo);
     chip.appendChild(meta);
@@ -2183,12 +2199,12 @@
     seedTag.className = "seed-chip__seed";
     seedTag.textContent = seed ? `Seed ${seed.seed}` : seedLabel || "Awaiting seed";
     meta.appendChild(name);
-    meta.appendChild(seedTag);
+    name.appendChild(seedTag);
     if (note) {
       const statusLine = document.createElement("div");
       statusLine.className = "seed-chip__status";
       statusLine.textContent = note;
-      meta.appendChild(statusLine);
+      name.appendChild(statusLine);
     }
 
     chip.appendChild(meta);
