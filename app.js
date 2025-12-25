@@ -959,7 +959,6 @@
   
     chip.appendChild(logo);
     chip.appendChild(meta);
-    chip.style.
   
     return chip;
   }
