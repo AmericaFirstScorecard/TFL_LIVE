@@ -835,7 +835,6 @@
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
     timePill.textContent = game.startTime || "TBD";
-    timePill.style.paddingBottom = '5px';
 
     const divider = document.createElement("span"); // <span></span>
     divider.style.display = "inline-block";
