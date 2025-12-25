@@ -817,56 +817,46 @@
   
     const meta = document.createElement("div");
     meta.className = "schedule-game__meta";
-    
-    // ONE parent container
-    const scoreRow = document.createElement("div");
-    scoreRow.className = "schedule-score";
-    
-    // left group (time + status)
-    const leftGroup = document.createElement("div");
-    leftGroup.className = "schedule-score__left";
-    
+  
+    const left = document.createElement("div");
+    left.className = "schedule-score";
+  
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
     timePill.textContent = game.startTime || "TBD";
-    
+
     const emptySpan = document.createElement("span");
     emptySpan.style.display = "inline-block";
     emptySpan.style.width = "8px";
-    
+  
     const statusPill = document.createElement("span");
     statusPill.className = complete ? "pill pill--warning" : "pill";
     statusPill.textContent = complete ? "FINAL" : "SCHEDULED";
-    
-    leftGroup.appendChild(timePill);
-    leftGroup.appendChild(emptySpan);
-    leftGroup.appendChild(statusPill);
-    
-    // right group (Score — 21–14)
-    const rightGroup = document.createElement("div");
-    rightGroup.className = "schedule-score__right";
-    
+
+    const right = document.createElement("div");
+    right.className = "schedule-game__score";
+  
     const scoreLabel = document.createElement("span");
     scoreLabel.className = "schedule-game__label";
     scoreLabel.textContent = "Score ";
-    
+  
     const scoreVal = document.createElement("span");
     scoreVal.className = "schedule-game__value";
     scoreVal.textContent =
       awayScore == null && homeScore == null ? "—" : `${awayScore ?? "—"}–${homeScore ?? "—"}`;
-    
-    rightGroup.appendChild(scoreLabel);
-    rightGroup.appendChild(scoreVal);
-    
-    // put BOTH groups under .schedule-score
-    scoreRow.appendChild(leftGroup);
-    scoreRow.appendChild(rightGroup);
-    
-    meta.appendChild(scoreRow);
-    
+  
+    left.appendChild(timePill);
+    left.appendChild(emptySpan);
+    left.appendChild(statusPill);
+    right.appendChild(scoreLabel);
+    right.appendChild(scoreVal);
+  
+    meta.appendChild(left);
+    meta.appendChild(right);
+  
     wrap.appendChild(teams);
     wrap.appendChild(meta);
-    
+  
     return wrap;
   }
   
