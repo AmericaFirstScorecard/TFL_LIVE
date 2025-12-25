@@ -831,14 +831,11 @@
     // Left: time + status pills
     const left = document.createElement("div");
     left.className = "schedule-game__pills"; // style with gap in CSS if you want
-
-    const divider = document.createElement("div");
-    divider.className = "divider";
-    divider.style.width = "10px";
   
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
     timePill.textContent = game.startTime || "TBD";
+    timePill.style.paddingBottom = '5px';
 
     const divider = document.createElement("span"); // <span></span>
     divider.style.display = "inline-block";
