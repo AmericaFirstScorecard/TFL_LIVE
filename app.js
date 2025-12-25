@@ -838,7 +838,7 @@
     const divider = document.createElement("span"); // <span></span>
     divider.style.display = "inline-block";
     divider.style.width = "10px";
-    divider.style.height = "5px";
+    divider.style.height = "25px";
   
     const statusPill = document.createElement("span");
     statusPill.className = complete ? "pill pill--warning" : "pill";
