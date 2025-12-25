@@ -830,6 +830,10 @@
     // Left: time + status pills
     const center = document.createElement("div");
     center.className = "schedule-game__pills";
+    center.style.marginleft = "auto"
+    center.style.marginright = "auto"
+    center.style.marginbottom = "5px"
+    center.style.margintop = "5px"
   
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
@@ -838,17 +842,14 @@
     const divider = document.createElement("span"); // <span></span> empty span
     divider.style.display = "inline-block";
     divider.style.width = "10px";
-    divider.style.height = "25px";
   
     const statusPill = document.createElement("span");
     statusPill.className = complete ? "pill pill--warning" : "pill";
     statusPill.textContent = complete ? "FINAL" : "SCHEDULED";
-    statusPill.style.right = "5px"
   
     center.appendChild(timePill);
     center.appendChild(divider);
     center.appendChild(statusPill);
-    center.style.marginleft = "5px"
   
     // Right: score
     const right = document.createElement("div");
@@ -865,7 +866,6 @@
   
     right.appendChild(scoreLabel);
     right.appendChild(scoreVal);
-    right.style.maringleft = "5px"
   
     meta.appendChild(center);
     meta.appendChild(right);
@@ -959,6 +959,7 @@
   
     chip.appendChild(logo);
     chip.appendChild(meta);
+    chip.style.
   
     return chip;
   }
