@@ -906,7 +906,7 @@
     chip.appendChild(meta);
   
     // ✅ only add the score badge if FINAL + score exists
-    const hasScore = !(teamScore == null || teamScore === "");
+    const hasScore = Number.isFinite(+teamScore);
     if (isFinal && hasScore) {
       meta.style.paddingRight = "44px"; // reserve room only when badge exists
   
