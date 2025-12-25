@@ -844,6 +844,7 @@
     statusPill.textContent = complete ? "FINAL" : "SCHEDULED";
   
     left.appendChild(timePill);
+    left.appendChild(divider);
     left.appendChild(statusPill);
   
     // Right: score
