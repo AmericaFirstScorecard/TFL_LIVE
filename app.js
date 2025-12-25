@@ -866,74 +866,72 @@
   }
 
   
-  function scheduleTeamChip(teamRaw, label, winnerState, teamScore,isFinal) {
+  function scheduleTeamChip(teamRaw, label, winnerState, teamScore, isFinal) {
     const teamInfo = resolveTeam(teamRaw);
-
+  
     const standing = findTeamRecord(teamRaw, teamInfo.displayName, teamInfo.canonicalKey);
     const recordText = standing ? formatRecord(standing) : "—";
-
+  
     const chip = document.createElement("div");
     chip.className = "seed-chip";
     chip.style.position = "relative";
-
+  
     if (winnerState === "winner") chip.classList.add("seed-chip--winner");
     if (winnerState === "loser") chip.classList.add("seed-chip--eliminated");
-
+  
     const logo = document.createElement("div");
     logo.className = "seed-chip__logo";
     setLogo(logo, teamInfo.logoKey);
-
+  
     const meta = document.createElement("div");
     meta.className = "seed-chip__meta";
-    meta.style.paddingRight = "44px";
-
+  
     const name = document.createElement("div");
     name.className = "seed-chip__name";
     name.textContent = teamInfo.displayName;
-
+  
     const seed = document.createElement("div");
     seed.className = "seed-chip__seed";
     seed.textContent = label;
-
+  
     const rec = document.createElement("div");
     rec.className = "schedule-team__record";
     rec.textContent = recordText;
-
-    const schscr = document.createElement("div");
-    schscr.className = "seed-chip__score"; // you can keep score-giver__meta if you want, but this is clearer
-    schscr.style.position = "absolute";
-    schscr.style.right = "8px";
-    schscr.style.top = "50%";
-    schscr.style.transform = "translateY(-50%)";
-    schscr.style.minWidth = "28px";
-    schscr.style.height = "22px";
-    schscr.style.padding = "0 8px";
-    schscr.style.borderRadius = "999px";
-    schscr.style.display = "flex";
-    schscr.style.alignItems = "center";
-    schscr.style.justifyContent = "center";
-    schscr.style.fontWeight = "700";
-    schscr.style.border = "1px solid rgba(255,255,255,0.18)";
-    schscr.style.background = "rgba(255,255,255,0.08)";
-
-    const hasScore = !(teamScore == null || teamScore === "");
-
-    if (!isFinal || !hasScore) {
-      schscr.hidden = true;
-      schscr.textContent = "";
-    } else {
-      schscr.hidden = false;
-      schscr.textContent = String(teamScore);
-    }
-
+  
     name.appendChild(seed);
     name.appendChild(rec);
     meta.appendChild(name);
-
+  
     chip.appendChild(logo);
     chip.appendChild(meta);
-    chip.appendChild(schscr);
-
+  
+    // ✅ only add the score badge if FINAL + score exists
+    const hasScore = !(teamScore == null || teamScore === "");
+    if (isFinal && hasScore) {
+      meta.style.paddingRight = "44px"; // reserve room only when badge exists
+  
+      const schscr = document.createElement("div");
+      schscr.className = "seed-chip__score";
+      schscr.textContent = String(teamScore);
+  
+      schscr.style.position = "absolute";
+      schscr.style.right = "8px";
+      schscr.style.top = "50%";
+      schscr.style.transform = "translateY(-50%)";
+      schscr.style.minWidth = "28px";
+      schscr.style.height = "22px";
+      schscr.style.padding = "0 8px";
+      schscr.style.borderRadius = "999px";
+      schscr.style.display = "flex";
+      schscr.style.alignItems = "center";
+      schscr.style.justifyContent = "center";
+      schscr.style.fontWeight = "700";
+      schscr.style.border = "1px solid rgba(255,255,255,0.18)";
+      schscr.style.background = "rgba(255,255,255,0.08)";
+  
+      chip.appendChild(schscr);
+    }
+  
     return chip;
   }
 
