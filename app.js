@@ -917,16 +917,6 @@
     name.appendChild(seed);
     name.appendChild(rec);
     meta.appendChild(name);
-
-    const scoreh = document.createElement("div");
-    scoreh.className = "schedule-score-home";
-    scoreh.textConent = homeScore
-    scoreh.style.Border = "1px"
-
-    const scorea = document.createElement("div");
-    scorea.className = "schedule-score-away";
-    scorea.textContent = awayScore
-    scorea.style.Border = "1px"
     
     chip.appendChild(logo);
     chip.appendChild(meta);
