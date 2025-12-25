@@ -827,6 +827,10 @@
     connectorA.className = "schedule__connector";
     connectorA.textContent = "vs";
     connectorA.style.textAlign = "center";
+    connectorA.style.fontsize = "12px";
+    connectorA.style.color = "#9ca3af";
+    connectorA.style.paddingTop = "5px";
+    connectorA.style.paddingBottom = "5px";
     teams.appendChild(connectorA);
   
     teams.appendChild(scheduleTeamChip(game.home, "Home", homeState, homeScore, isFinal));
