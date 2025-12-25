@@ -805,23 +805,8 @@
     teams.className = "schedule-game__teams";
 
     const complete = Boolean(game.complete);
-
-    // ✅ keep it simple / consistent with parseScheduleCSV
     const awayScore = game.scoreAway;
     const homeScore = game.scoreHome;
-
-    let awayState = "none";
-    let homeState = "none";
-
-    if (complete && awayScore != null && homeScore != null) {
-      if (awayScore > homeScore) {
-        awayState = "winner";
-        homeState = "loser";
-      } else if (homeScore > awayScore) {
-        homeState = "winner";
-        awayState = "loser";
-      }
-    }
 
     teams.appendChild(scheduleTeamChip(game.away, "Away", awayState, awayScore));
 
@@ -836,7 +821,6 @@
     const meta = document.createElement("div");
     meta.className = "schedule-game__meta";
   
-    // Left: time + status pills
     const center = document.createElement("div");
     center.className = "schedule-game__pills";
     center.style.marginLeft = "auto";
@@ -876,7 +860,7 @@
 
     const chip = document.createElement("div");
     chip.className = "seed-chip";
-    chip.style.position = "relative"; // ✅ required for absolute score badge positioning
+    chip.style.position = "relative";
 
     if (winnerState === "winner") chip.classList.add("seed-chip--winner");
     if (winnerState === "loser") chip.classList.add("seed-chip--eliminated");
@@ -887,7 +871,7 @@
 
     const meta = document.createElement("div");
     meta.className = "seed-chip__meta";
-    meta.style.paddingRight = "44px"; // ✅ leaves room so badge doesn't overlap text
+    meta.style.paddingRight = "44px";
 
     const name = document.createElement("div");
     name.className = "seed-chip__name";
@@ -901,7 +885,6 @@
     rec.className = "schedule-team__record";
     rec.textContent = recordText;
 
-    // ✅ SCORE BADGE (schscr)
     const schscr = document.createElement("div");
     schscr.className = "seed-chip__score"; // you can keep score-giver__meta if you want, but this is clearer
     schscr.style.position = "absolute";
@@ -919,8 +902,9 @@
     schscr.style.border = "1px solid rgba(255,255,255,0.18)";
     schscr.style.background = "rgba(255,255,255,0.08)";
 
-    // ✅ hide when blank/null; show otherwise
-    if (teamScore == null || teamScore === "") {
+    const hasScore = !(teamScore == null || teamScore === "");
+
+    if (!isFinal || !hasScore) {
       schscr.hidden = true;
       schscr.textContent = "";
     } else {
@@ -928,7 +912,6 @@
       schscr.textContent = String(teamScore);
     }
 
-    // build tree
     name.appendChild(seed);
     name.appendChild(rec);
     meta.appendChild(name);
