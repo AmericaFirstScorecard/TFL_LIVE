@@ -830,10 +830,10 @@
     // Left: time + status pills
     const center = document.createElement("div");
     center.className = "schedule-game__pills";
-    center.style.marginleft = "auto"
-    center.style.marginright = "auto"
-    center.style.marginbottom = "5px"
-    center.style.margintop = "5px"
+    center.style.marginLeft = "auto"
+    center.style.marginRight = "auto"
+    center.style.marginBottom = "5px"
+    center.style.marginTop = "5px"
   
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
@@ -874,50 +874,6 @@
     wrap.appendChild(meta);
   
     return wrap;
-  }
-  
-  function scheduleTeamChip(teamRaw, label, winnerState /* "winner" | "loser" | "none" */) {
-    const teamInfo = resolveTeam(teamRaw);
-  
-    // Pull record from standings (works once standings have loaded)
-    const standing = findTeamRecord(teamRaw, teamInfo.displayName, teamInfo.canonicalKey);
-    const recordText = standing ? formatRecord(standing) : "—";
-  
-    const chip = document.createElement("div");
-    chip.className = "seed-chip";
-  
-    if (winnerState === "winner") chip.classList.add("seed-chip--winner");
-    if (winnerState === "loser") chip.classList.add("seed-chip--eliminated");
-  
-    const logo = document.createElement("div");
-    logo.className = "seed-chip__logo";
-    setLogo(logo, teamInfo.logoKey);
-  
-    const meta = document.createElement("div");
-    meta.className = "seed-chip__meta";
-  
-    const name = document.createElement("div");
-    name.className = "seed-chip__name";
-    name.textContent = teamInfo.displayName;
-  
-    const seed = document.createElement("div");
-    seed.className = "seed-chip__seed";
-    seed.textContent = label; // "Away" / "Home"
-  
-    const rec = document.createElement("div");
-    rec.className = "schedule-team__record";
-    // If you want it to share the same styling as seed-chip__seed:
-    rec.classList.add("seed-chip__seed");
-    rec.textContent = recordText;
-  
-    meta.appendChild(name);
-    meta.appendChild(seed);
-    meta.appendChild(rec);
-  
-    chip.appendChild(logo);
-    chip.appendChild(meta);
-  
-    return chip;
   }
 
   
