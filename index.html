@@ -308,6 +308,34 @@
       </div>
     </div>
 
+    <div class="overlay" id="gameDetailOverlay" hidden>
+      <div class="overlay__backdrop"></div>
+      <div class="overlay__content" role="dialog" aria-modal="true" aria-labelledby="gameDetailTitle">
+        <button class="overlay__close" id="gameDetailClose" aria-label="Close game details">×</button>
+        <div class="game-detail">
+          <div class="game-detail__header">
+            <div>
+              <div class="game-detail__title" id="gameDetailTitle">Game details</div>
+              <div class="game-detail__subtitle" id="gameDetailSubtitle">Win probability history</div>
+            </div>
+            <div class="badge badge--ghost" id="gameDetailBadge">Final</div>
+          </div>
+
+          <div class="game-detail__meta-bar">
+            <div class="game-detail__score" id="gameDetailScore">Team A — Team B</div>
+            <div class="game-detail__chart-meta" id="gameDetailChartMeta"></div>
+          </div>
+
+          <div class="game-detail__grid">
+            <div class="game-detail__chart-card">
+              <canvas id="gameDetailChart" height="200"></canvas>
+            </div>
+            <div class="game-detail__stats" id="gameDetailStats"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="overlay" id="playerOverlay" hidden>
       <div class="overlay__backdrop"></div>
       <div class="overlay__content" role="dialog" aria-modal="true" aria-labelledby="playerOverlayTitle">
