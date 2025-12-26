@@ -1885,11 +1885,11 @@
 
     const standingsMap = buildStandingsLookup(standings);
 
-  const records = Array.from(players.values())
-    .map((rec) => {
-      const standing = lookupStanding(standingsMap, rec.team || roster.get(rec.player)?.team);
-      const wins = standing?.wins ?? 0;
-      const winPct = standing?.winPct ?? null;
+    const records = Array.from(players.values())
+      .map((rec) => {
+        const standing = lookupStanding(standingsMap, rec.team || roster.get(rec.player)?.team);
+        const wins = standing?.wins ?? 0;
+        const winPct = standing?.winPct ?? null;
 
         const { score: mvpScore, defScore } = computeMvpScore(rec, wins);
 
@@ -1904,10 +1904,12 @@
       })
       .filter((r) => r.player);
 
+    const rosterWithProfiles = mergeRosterWithRecords(roster, records);
+
     return {
       mvpRecords: records,
       standings,
-      roster,
+      roster: rosterWithProfiles,
       news,
     };
   }
@@ -2049,6 +2051,19 @@
       if (player && team) map.set(player, { team, image: imageUrl || null });
     });
     return map;
+  }
+
+  function mergeRosterWithRecords(roster, records) {
+    const merged = new Map(roster || new Map());
+    (records || []).forEach((rec) => {
+      const name = rec?.player;
+      if (!name) return;
+      const existing = merged.get(name) || {};
+      const team = existing.team || rec.team || "";
+      const image = existing.image ?? null;
+      merged.set(name, { team, image });
+    });
+    return merged;
   }
 
   function buildRosterLookup(map) {
@@ -3548,6 +3563,14 @@
     return String(a || "").localeCompare(String(b || ""));
   }
 
+  function primaryTeamKey(key) {
+    const info = TEAM_CODE_MAP[key];
+    if (info?.logo || info?.name) {
+      return normalizeTeamKey(info.logo || info.name);
+    }
+    return normalizeTeamKey(key);
+  }
+
   function canonicalTeamKey(raw) {
     const cleaned = String(raw ?? "").trim();
     if (!cleaned) return null;
@@ -3556,14 +3579,14 @@
     const asNumber = Number(cleaned);
     if (!Number.isNaN(asNumber)) {
       const intKey = String(Math.trunc(asNumber));
-      if (TEAM_CODE_MAP[intKey]) return intKey;
+      if (TEAM_CODE_MAP[intKey]) return primaryTeamKey(intKey);
     }
 
     const norm = normalizeTeamKey(cleaned);
-    if (TEAM_CODE_MAP[cleaned]) return cleaned;
-    if (TEAM_CODE_MAP[norm]) return norm;
-    if (STANDINGS_ALIASES[norm]) return STANDINGS_ALIASES[norm];
-    return null;
+    if (TEAM_CODE_MAP[cleaned]) return primaryTeamKey(cleaned);
+    if (TEAM_CODE_MAP[norm]) return primaryTeamKey(norm);
+    if (STANDINGS_ALIASES[norm]) return primaryTeamKey(STANDINGS_ALIASES[norm]);
+    return norm;
   }
 
   function normalizeTeamKey(name) {
@@ -3778,9 +3801,12 @@
   function buildStandingsLookup(rows) {
     const map = new Map();
     rows.forEach((row) => {
-      const key = normalizeTeamKey(row.team);
-      if (!key) return;
-      map.set(key, row);
+      const normKey = normalizeTeamKey(row.team);
+      const canonical = canonicalTeamKey(row.team);
+      [normKey, canonical].forEach((key) => {
+        if (!key) return;
+        map.set(key, row);
+      });
     });
     return map;
   }

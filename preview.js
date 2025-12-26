@@ -652,9 +652,12 @@
   function buildStandingsLookup(rows) {
     const map = new Map();
     rows.forEach((row) => {
-      const key = normalizeTeamKey(row.team);
-      if (!key) return;
-      map.set(key, row);
+      const norm = normalizeTeamKey(row.team);
+      const canonical = canonicalTeamKey(row.team);
+      [norm, canonical].forEach((key) => {
+        if (!key) return;
+        map.set(key, row);
+      });
     });
     return map;
   }
@@ -753,6 +756,14 @@
     return str.startsWith("#") ? str : `#${str}`;
   }
 
+  function primaryTeamKey(key) {
+    const info = TEAM_CODE_MAP[key];
+    if (info?.logo || info?.name) {
+      return normalizeTeamKey(info.logo || info.name);
+    }
+    return normalizeTeamKey(key);
+  }
+
   function resolveTeam(raw) {
     const cleaned = String(raw ?? "").trim();
     if (!cleaned) return { displayName: "Team", logoKey: "", canonicalKey: "" };
@@ -772,12 +783,12 @@
     const asNumber = Number(cleaned);
     if (!Number.isNaN(asNumber)) {
       const intKey = String(Math.trunc(asNumber));
-      if (TEAM_CODE_MAP[intKey]) return intKey;
+      if (TEAM_CODE_MAP[intKey]) return primaryTeamKey(intKey);
     }
 
     const norm = normalizeTeamKey(cleaned);
-    if (TEAM_CODE_MAP[cleaned]) return cleaned;
-    if (TEAM_CODE_MAP[norm]) return norm;
+    if (TEAM_CODE_MAP[cleaned]) return primaryTeamKey(cleaned);
+    if (TEAM_CODE_MAP[norm]) return primaryTeamKey(norm);
     return norm;
   }
 

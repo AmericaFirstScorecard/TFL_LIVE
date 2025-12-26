@@ -106,6 +106,32 @@
       .filter((r) => r.player);
   }
 
+  function parseAllTimeStandings(workbook) {
+    const sheet = findSheet(workbook, "All Time Standings");
+    if (!sheet || typeof XLSX === "undefined") return [];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+    return rows
+      .map((row) => {
+        const wins = parseNumber(row.Win);
+        const losses = parseNumber(row.Loss);
+        const draws = parseNumber(row.Draw);
+        const games = (wins || 0) + (losses || 0) + (draws || 0);
+        let winPct = parseNumber(row["win %"]);
+        if (winPct == null && games) {
+          winPct = (wins + (draws || 0) * 0.5) / games;
+        }
+        return {
+          team: String(row.Team || row.team || "").trim(),
+          wins,
+          losses,
+          draws,
+          games,
+          winPct,
+        };
+      })
+      .filter((r) => r.team);
+  }
+
   function parseLegacyWorkbook(buffer) {
     if (typeof XLSX === "undefined") throw new Error("XLSX missing");
     const workbook = XLSX.read(buffer, { type: "array" });
@@ -114,6 +140,7 @@
       tateBowls: parseTateBowlSheet(workbook),
       awards: parseAwardsHistory(workbook),
       stats: parseAllTimeStats(workbook),
+      standings: parseAllTimeStandings(workbook),
     };
   }
 

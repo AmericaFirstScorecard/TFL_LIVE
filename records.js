@@ -8,6 +8,7 @@
     awards: [],
     tateBowls: [],
     legacy: [],
+    standings: [],
     rosterMap: new Map(),
     rosterLookup: new Map(),
   };
@@ -28,6 +29,8 @@
     els.awardsEmpty = document.getElementById("awardsEmpty");
     els.tateTableBody = document.getElementById("tateTableBody");
     els.tateEmpty = document.getElementById("tateEmpty");
+    els.standingsTableBody = document.getElementById("standingsTableBody");
+    els.standingsEmpty = document.getElementById("standingsEmpty");
     els.tabs = document.getElementById("recordsTabs");
     els.panes = document.querySelectorAll(".records-pane");
   }
@@ -55,12 +58,14 @@
       state.awards = data.awards || [];
       state.tateBowls = data.tateBowls || [];
       state.legacy = data.leaderboard || [];
+      state.standings = data.standings || [];
       state.rosterMap = roster.map;
       state.rosterLookup = roster.lookup;
       renderRecords();
       renderLegacy();
       renderAwards();
       renderTate();
+      renderStandings();
       if (els.status) els.status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
     } catch (err) {
       console.error(err);
@@ -88,6 +93,38 @@
       frag.appendChild(tr);
     });
     els.recordsTableBody.appendChild(frag);
+  }
+
+  function renderStandings() {
+    if (!els.standingsTableBody) return;
+    els.standingsTableBody.innerHTML = "";
+    const rows = state.standings || [];
+    if (!rows.length) {
+      if (els.standingsEmpty) els.standingsEmpty.hidden = false;
+      return;
+    }
+    if (els.standingsEmpty) els.standingsEmpty.hidden = true;
+
+    const sorted = [...rows].sort(
+      (a, b) =>
+        (b.winPct ?? -Infinity) - (a.winPct ?? -Infinity) ||
+        (b.wins ?? -Infinity) - (a.wins ?? -Infinity) ||
+        (a.team || "").localeCompare(b.team || "")
+    );
+
+    const frag = document.createDocumentFragment();
+    sorted.forEach((row) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${escapeHtml(row.team)}</td>
+        <td>${formatNumber(row.wins)}</td>
+        <td>${formatNumber(row.losses)}</td>
+        <td>${formatNumber(row.draws)}</td>
+        <td>${formatPct(row.winPct)}</td>
+      `;
+      frag.appendChild(tr);
+    });
+    els.standingsTableBody.appendChild(frag);
   }
 
   function renderLegacy() {
@@ -176,6 +213,14 @@
     if (value == null || value === "") return "—";
     const n = Number(value);
     return Number.isFinite(n) ? n.toLocaleString() : escapeHtml(String(value));
+  }
+
+  function formatPct(value) {
+    if (value == null || value === "") return "—";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return escapeHtml(String(value));
+    const pct = n > 1 ? n : n * 100;
+    return `${pct.toFixed(1)}%`;
   }
 
   function formatSeason(value) {

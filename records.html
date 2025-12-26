@@ -33,6 +33,7 @@
 
       <div class="pill-row pill-row--wrap" id="recordsTabs">
         <button class="pill pill--ghost pill--active" data-pane="records" type="button">All Time Records</button>
+        <button class="pill pill--ghost" data-pane="standings" type="button">All Time Standings</button>
         <button class="pill pill--ghost" data-pane="legacy" type="button">Legacy Leaderboard</button>
         <button class="pill pill--ghost" data-pane="awards" type="button">Awards History</button>
         <button class="pill pill--ghost" data-pane="tate" type="button">Tate Bowl History</button>
@@ -53,6 +54,24 @@
           </table>
         </div>
         <div class="state state--empty" id="recordsEmpty" hidden>No records published yet.</div>
+      </div>
+
+      <div class="records-pane" data-pane="standings">
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Team</th>
+                <th>W</th>
+                <th>L</th>
+                <th>D</th>
+                <th>Win%</th>
+              </tr>
+            </thead>
+            <tbody id="standingsTableBody"></tbody>
+          </table>
+        </div>
+        <div class="state state--empty" id="standingsEmpty" hidden>No standings published yet.</div>
       </div>
 
       <div class="records-pane" data-pane="legacy">
