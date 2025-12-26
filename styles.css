@@ -1749,6 +1749,14 @@ body {
   color: var(--muted);
 }
 
+.player-hero__avatar {
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 28px;
+  color: var(--text);
+}
+
 .team-panels {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -1804,6 +1812,35 @@ body {
 .team-roster__meta {
   color: var(--muted);
   font-size: 12px;
+}
+
+.team-roster__badges {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.player-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.player-badge__icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  background-size: cover;
+  background-position: center;
+  flex-shrink: 0;
 }
 
 .team-roster__statline {
@@ -1870,6 +1907,62 @@ body {
 .team-pill--warning {
   background: rgba(251, 191, 36, 0.16);
   border-color: rgba(251, 191, 36, 0.32);
+}
+
+.hardware-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.hardware-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  gap: 10px;
+}
+
+.hardware-card__header {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.hardware-card__image {
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  background-size: cover;
+  background-position: center;
+}
+
+.hardware-card__title {
+  font-weight: 800;
+}
+
+.hardware-card__description {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.hardware-card__recipients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hardware-pill {
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(96, 165, 250, 0.12);
+  font-weight: 700;
+  font-size: 12px;
 }
 
 .team-section__title {
