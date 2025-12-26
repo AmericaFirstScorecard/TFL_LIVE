@@ -2016,233 +2016,303 @@
       return;
     }
 
-    const seeds = buildSeeds(rows);
-    const [seed1, seed2, seed3, seed4, seed5] = seeds;
+    const seeds = buildSeeds(rows, 14);
+    const model = buildBracketModel(seeds);
 
     const bracket = document.createElement("div");
-    bracket.className = "bracket__stages";
-    bracket.appendChild(buildWildcardStage({ seed1, seed2, seed3, seed4, seed5 }));
-    bracket.appendChild(buildSemiStage({ seed1, seed2, seed3, seed4, seed5 }));
-    bracket.appendChild(buildFinalStage());
+    bracket.className = "bracket";
+
+    bracket.appendChild(buildBracketSummary());
+    bracket.appendChild(buildBracketLegend());
+    bracket.appendChild(buildBracketGrid(model));
+
     els.bracketDiagram.appendChild(bracket);
 
     if (els.bracketStatus) els.bracketStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
     toggleError(els.bracketError, false);
   }
 
-  function buildStage(title, subtitle = "") {
-    const stage = document.createElement("div");
-    stage.className = "bracket__stage";
-    const header = document.createElement("div");
-    header.className = "bracket__stage-header";
-    const heading = document.createElement("div");
-    heading.className = "bracket__stage-title";
-    heading.textContent = title;
-    header.appendChild(heading);
-    if (subtitle) {
-      const sub = document.createElement("div");
-      sub.className = "bracket__stage-subtitle";
-      sub.textContent = subtitle;
-      header.appendChild(sub);
+  function buildBracketSummary() {
+    const summary = document.createElement("div");
+    summary.className = "bracket__summary-bar";
+    summary.innerHTML = `
+      <div class="bracket__summary-title">Seeds ranked by league points (P)</div>
+      <div class="bracket__summary-body">
+        Seeds alternate sides to mirror two conferences. Seed #1 on each side clinches the Wild Card bye.
+      </div>
+    `;
+    return summary;
+  }
+
+  function buildBracketLegend() {
+    const legend = document.createElement("div");
+    legend.className = "bracket__legend";
+    [
+      "Wild Card",
+      "Divisional",
+      "Conference",
+      "Tate Bowl",
+      "Conference",
+      "Divisional",
+      "Wild Card",
+    ].forEach((label) => {
+      const stage = document.createElement("div");
+      stage.className = "bracket__legend-label";
+      stage.textContent = label;
+      legend.appendChild(stage);
+    });
+    return legend;
+  }
+
+  function buildBracketGrid(model) {
+    const grid = document.createElement("div");
+    grid.className = "bracket__grid bracket__grid--board";
+
+    grid.appendChild(buildBracketColumn(model.left, "wildcard", "left"));
+    grid.appendChild(buildBracketColumn(model.left, "divisional", "left"));
+    grid.appendChild(buildBracketColumn(model.left, "conference", "left"));
+    grid.appendChild(buildChampionshipColumn());
+    grid.appendChild(buildBracketColumn(model.right, "conference", "right"));
+    grid.appendChild(buildBracketColumn(model.right, "divisional", "right"));
+    grid.appendChild(buildBracketColumn(model.right, "wildcard", "right"));
+
+    return grid;
+  }
+
+  function buildBracketModel(seeds) {
+    const { leftSeeds, rightSeeds } = distributeSeeds(seeds);
+    return {
+      left: buildBracketSide(leftSeeds, "Left Bracket"),
+      right: buildBracketSide(rightSeeds, "Right Bracket"),
+    };
+  }
+
+  function distributeSeeds(seeds) {
+    const limited = seeds.slice(0, 14);
+    const leftSeeds = [];
+    const rightSeeds = [];
+
+    limited.forEach((seed, idx) => {
+      const target = idx % 2 === 0 ? leftSeeds : rightSeeds;
+      target.push({ ...seed, confSeed: (target.length || 0) + 1 });
+    });
+
+    while (leftSeeds.length < 7) leftSeeds.push(buildPlaceholderSeed(leftSeeds.length + 1));
+    while (rightSeeds.length < 7) rightSeeds.push(buildPlaceholderSeed(rightSeeds.length + 1));
+
+    return { leftSeeds, rightSeeds };
+  }
+
+  function buildPlaceholderSeed(confSeed, label = "TBD") {
+    return { placeholder: true, confSeed, label };
+  }
+
+  function buildWinnerSeed(label, confSeed) {
+    return { placeholder: true, label, confSeed };
+  }
+
+  function buildBracketSide(seeds, label) {
+    const findSeed = (confSeed) => seeds.find((s) => s.confSeed === confSeed) || buildPlaceholderSeed(confSeed);
+
+    return {
+      label,
+      byeSeed: findSeed(1),
+      wildcard: [
+        {
+          title: "Wild Card",
+          top: findSeed(2),
+          bottom: findSeed(7),
+          note: "Winner advances to Divisional",
+        },
+        {
+          title: "Wild Card",
+          top: findSeed(3),
+          bottom: findSeed(6),
+          note: "Winner advances to Divisional",
+        },
+        {
+          title: "Wild Card",
+          top: findSeed(4),
+          bottom: findSeed(5),
+          note: "Winner faces top seed",
+        },
+      ],
+      divisional: [
+        {
+          title: "Divisional",
+          top: findSeed(1),
+          bottom: buildWinnerSeed("Winner 4 vs 5"),
+          note: "Top seed hosts",
+          tag: "Clinched bye",
+        },
+        {
+          title: "Divisional",
+          top: buildWinnerSeed("Winner 2 vs 7"),
+          bottom: buildWinnerSeed("Winner 3 vs 6"),
+        },
+      ],
+      conference: [
+        {
+          title: "Conference Final",
+          top: buildWinnerSeed("Divisional winner A"),
+          bottom: buildWinnerSeed("Divisional winner B"),
+          highlight: true,
+        },
+      ],
+    };
+  }
+
+  function buildBracketColumn(side, stage, alignment) {
+    const column = document.createElement("div");
+    column.className = `bracket__column bracket__column--${stage}`;
+
+    if (stage === "wildcard") {
+      const tag = document.createElement("div");
+      tag.className = "bracket__conference-tag";
+      tag.textContent = `${side.label}`;
+      column.appendChild(tag);
     }
-    stage.appendChild(header);
-    return stage;
+
+    if (stage === "wildcard" && side.byeSeed) {
+      column.appendChild(buildByeMatchCard(side.byeSeed, alignment));
+    }
+
+    const matches = side[stage] || [];
+    matches.forEach((match) => {
+      column.appendChild(buildBracketCard(match, alignment));
+    });
+
+    return column;
   }
 
-  function buildWildcardStage({ seed1, seed2, seed3, seed4, seed5 }) {
-    const stage = buildStage("Wildcard Round", "Seeds ranked by points (P). Seeds 1-3 are on bye.");
-    const grid = document.createElement("div");
-    grid.className = "bracket__stage-grid bracket__stage-grid--wildcard";
-    grid.appendChild(buildByeCard(seed1, 1, "Bye to Semi One"));
-    grid.appendChild(buildByeCard(seed2, 2, "Bye to Semi Two"));
-    grid.appendChild(buildByeCard(seed3, 3, "Bye to Semi Two"));
-    grid.appendChild(
-      buildMatchCard({
-        title: "4 vs 5 Wildcard",
-        topSeed: seed4,
-        bottomSeed: seed5,
-        connectorLabel: "advances",
-        description: "Winner faces Seed #1 in Semi One",
-        topFallback: "Seed #4",
-        bottomFallback: "Seed #5",
-        topNote: seed4 ? "Wildcard matchup" : "",
-        bottomNote: seed5 ? "Wildcard matchup" : "",
-      })
-    );
-    stage.appendChild(grid);
-    return stage;
-  }
-
-  function buildSemiStage({ seed1, seed2, seed3, seed4, seed5 }) {
-    const stage = buildStage("Semi Finals", "Winners advance to the Tate Bowl");
-    const grid = document.createElement("div");
-    grid.className = "bracket__stage-grid bracket__stage-grid--semis";
-    grid.appendChild(
-      buildMatchCard({
-        title: "Semi One",
-        topSeed: seed1,
-        bottomSeed: null,
-        connectorLabel: "vs",
-        description: "1 vs (wildcard winner 4/5)",
-        topFallback: "Seed #1",
-        bottomFallback: seed4 && seed5 ? "Winner of 4/5" : "Awaiting wildcard winner",
-        bottomSeedLabel: seed4 && seed5 ? "Winner 4/5" : "Pending wildcard",
-        topNote: seed1 ? "Top seed bye" : "",
-        bottomNote: seed4 && seed5 ? "Advances from wildcard" : "",
-      })
-    );
-    grid.appendChild(
-      buildMatchCard({
-        title: "Semi Two",
-        topSeed: seed2,
-        bottomSeed: seed3,
-        connectorLabel: "vs",
-        description: "2 vs 3",
-        topFallback: "Seed #2",
-        bottomFallback: "Seed #3",
-        topNote: seed2 ? "Bye to semis" : "",
-        bottomNote: seed3 ? "Bye to semis" : "",
-      })
-    );
-    stage.appendChild(grid);
-    return stage;
-  }
-
-  function buildFinalStage() {
-    const stage = buildStage("Tate Bowl", "Semi One vs Semi Two");
-    const grid = document.createElement("div");
-    grid.className = "bracket__stage-grid bracket__stage-grid--final";
-    grid.appendChild(
-      buildMatchCard({
-        title: "Championship",
-        topSeed: null,
-        bottomSeed: null,
-        connectorLabel: "vs",
-        description: "Semi One winner vs Semi Two winner",
-        topFallback: "Winner of Semi One",
-        bottomFallback: "Winner of Semi Two",
-        topSeedLabel: "Semi One winner",
-        bottomSeedLabel: "Semi Two winner",
-        tone: "final",
-      })
-    );
-    stage.appendChild(grid);
-    return stage;
-  }
-
-  function buildMatchCard({
-    title,
-    topSeed,
-    bottomSeed,
-    connectorLabel = "vs",
-    description = "",
-    topFallback = "Awaiting seed",
-    bottomFallback = "Awaiting opponent",
-    topSeedLabel,
-    bottomSeedLabel,
-    topNote,
-    bottomNote,
-    tone,
-  }) {
+  function buildBracketCard(match, alignment) {
     const card = document.createElement("div");
-    card.className = "bracket__round";
-    if (tone) card.classList.add(`bracket__round--${tone}`);
-    card.innerHTML = `<div class="bracket__round-title">${title}</div>`;
+    card.className = "bracket-card";
+    if (match.highlight) card.classList.add("bracket-card--final");
+    card.dataset.side = alignment;
 
-    const matchup = document.createElement("div");
-    matchup.className = "bracket__matchup";
+    const title = document.createElement("div");
+    title.className = "bracket-card__title";
+    title.textContent = match.title || "Matchup";
+    card.appendChild(title);
 
-    matchup.appendChild(
-      seedChip(topSeed, {
-        fallbackLabel: topFallback,
-        seedLabel: topSeedLabel,
-        note: topNote || (topSeed ? `Seed #${topSeed.seed}` : ""),
-      })
-    );
+    const slots = document.createElement("div");
+    slots.className = "bracket-card__slots";
+
+    slots.appendChild(seedSlot(match.top, { tag: match.tag, isBye: match.top?.confSeed === 1 }));
 
     const connector = document.createElement("div");
-    connector.className = "bracket__connector";
-    connector.textContent = connectorLabel;
-    matchup.appendChild(connector);
+    connector.className = "bracket-card__connector";
+    connector.textContent = "TBD";
+    slots.appendChild(connector);
 
-    matchup.appendChild(
-      seedChip(bottomSeed, {
-        fallbackLabel: bottomFallback,
-        seedLabel: bottomSeedLabel,
-        note: bottomNote || (bottomSeed ? `Seed #${bottomSeed.seed}` : ""),
-      })
-    );
+    slots.appendChild(seedSlot(match.bottom));
 
-    card.appendChild(matchup);
+    card.appendChild(slots);
 
-    if (description) {
+    if (match.note) {
       const note = document.createElement("div");
-      note.className = "bracket__note";
-      note.textContent = description;
+      note.className = "bracket-card__note";
+      note.textContent = match.note;
       card.appendChild(note);
     }
 
     return card;
   }
 
-  function buildByeCard(seed, seedNumber, note = "") {
+  function buildByeMatchCard(seed, alignment) {
     const card = document.createElement("div");
-    card.className = "bracket__round bracket__round--bye";
+    card.className = "bracket-card bracket-card--bye";
+    card.dataset.side = alignment;
+
     const title = document.createElement("div");
-    title.className = "bracket__round-title";
-    title.textContent = `Seed #${seed?.seed || seedNumber} Bye`;
+    title.className = "bracket-card__title";
+    title.textContent = "Clinched Playoffs";
     card.appendChild(title);
-    card.appendChild(
-      seedChip(seed, {
-        fallbackLabel: `Seed #${seedNumber} bye spot`,
-        seedLabel: `Seed #${seedNumber}`,
-        note: note || "Bye week",
-      })
-    );
-    if (note) {
-      const desc = document.createElement("div");
-      desc.className = "bracket__note";
-      desc.textContent = note;
-      card.appendChild(desc);
-    }
+
+    card.appendChild(seedSlot(seed, { isBye: true, tag: "Wild Card bye" }));
+
     return card;
   }
 
-  function seedChip(seed, options = {}) {
-    const { fallbackLabel = "Seed pending", status = "pending", seedLabel, note } =
-      typeof options === "string" ? { fallbackLabel: options } : options;
+  function buildChampionshipColumn() {
+    const column = document.createElement("div");
+    column.className = "bracket__column bracket__column--center";
 
-    const chip = document.createElement("div");
-    chip.className = "seed-chip";
-    if (status) chip.classList.add(`seed-chip--${status}`);
-    if (seed) attachTeamNav(chip, resolveTeam(seed.team));
+    const card = document.createElement("div");
+    card.className = "bracket-card bracket-card--trophy";
+
+    const badge = document.createElement("div");
+    badge.className = "bracket-card__badge";
+    badge.textContent = "Tate Bowl";
+    card.appendChild(badge);
+
+    const hero = document.createElement("div");
+    hero.className = "bracket-card__hero";
+    hero.innerHTML = `<div class="bracket-card__hero-img" role="img" aria-label="Tate Bowl"></div>`;
+    card.appendChild(hero);
+
+    const slots = document.createElement("div");
+    slots.className = "bracket-card__slots bracket-card__slots--final";
+    slots.appendChild(seedSlot(buildWinnerSeed("Left champion"), { compact: true }));
+    const connector = document.createElement("div");
+    connector.className = "bracket-card__connector bracket-card__connector--final";
+    connector.textContent = "vs";
+    slots.appendChild(connector);
+    slots.appendChild(seedSlot(buildWinnerSeed("Right champion"), { compact: true }));
+    card.appendChild(slots);
+
+    column.appendChild(card);
+    return column;
+  }
+
+  function seedSlot(seed, options = {}) {
+    const { tag, isBye, compact } = options;
+    const slot = document.createElement("div");
+    slot.className = "bracket-slot";
+    if (seed?.placeholder) slot.classList.add("bracket-slot--open");
+    if (isBye) slot.classList.add("bracket-slot--bye");
+    if (compact) slot.classList.add("bracket-slot--compact");
 
     const logo = document.createElement("div");
-    logo.className = "seed-chip__logo";
-    if (seed) setLogo(logo, resolveTeam(seed.team).logoKey);
-    chip.appendChild(logo);
+    logo.className = "bracket-slot__logo";
+    const body = document.createElement("div");
+    body.className = "bracket-slot__body";
+
+    const seedLabel = document.createElement("div");
+    seedLabel.className = "bracket-slot__seed";
+    seedLabel.textContent = seed?.confSeed ? `Seed ${seed.confSeed}` : "Seed";
+    body.appendChild(seedLabel);
+
+    const name = document.createElement("div");
+    name.className = "bracket-slot__name";
+
+    if (seed && !seed.placeholder && seed.team) {
+      const teamInfo = resolveTeam(seed.team);
+      setLogo(logo, teamInfo.logoKey);
+      name.innerHTML = `<a class="team-link" href="${teamPageUrl(teamInfo)}">${escapeHtml(teamInfo.displayName)}</a>`;
+      attachTeamNav(slot, teamInfo);
+    } else {
+      name.textContent = seed?.label || "TBD";
+    }
+    body.appendChild(name);
 
     const meta = document.createElement("div");
-    meta.className = "seed-chip__meta";
-    const name = document.createElement("div");
-    name.className = "seed-chip__name";
-    name.innerHTML = seed
-      ? `<a class="team-link" href="${teamPageUrl(resolveTeam(seed.team))}">${escapeHtml(resolveTeam(seed.team).displayName)}</a>`
-      : fallbackLabel;
-    const seedTag = document.createElement("div");
-    seedTag.className = "seed-chip__seed";
-    seedTag.textContent = seed ? `Seed ${seed.seed}` : seedLabel || "Awaiting seed";
-    meta.appendChild(name);
-    name.appendChild(seedTag);
-    if (note) {
-      const statusLine = document.createElement("div");
-      statusLine.className = "seed-chip__status";
-      statusLine.textContent = note;
-      name.appendChild(statusLine);
+    meta.className = "bracket-slot__meta";
+    const points = seed?.points != null ? `P: ${formatCount(seed.points)}` : "Awaiting points";
+    meta.textContent = points;
+    body.appendChild(meta);
+
+    if (tag) {
+      const badge = document.createElement("div");
+      badge.className = "bracket-slot__tag";
+      badge.textContent = tag;
+      body.appendChild(badge);
     }
 
-    chip.appendChild(meta);
-    return chip;
+    slot.appendChild(logo);
+    slot.appendChild(body);
+    return slot;
   }
 
   function renderNews(news) {
@@ -3043,11 +3113,11 @@
     return map;
   }
 
-  function buildSeeds(rows) {
+  function buildSeeds(rows, limit = 5) {
     if (!rows?.length) return [];
     return sortStandings(rows)
       .filter((row) => row.team)
-      .slice(0, 5)
+      .slice(0, limit)
       .map((row, idx) => ({ ...row, seed: idx + 1 }));
   }
 
