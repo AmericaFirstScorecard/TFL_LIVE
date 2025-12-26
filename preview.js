@@ -192,13 +192,6 @@
     const probability = buildWinProbability(profileAway, profileHome);
     const awayLogo = logoFile(away.logoKey);
     const homeLogo = logoFile(home.logoKey);
-    const leadPct = Math.max(probability.awayPct, probability.homePct);
-    const leadLabel =
-      probability.awayPct === probability.homePct
-        ? "Dead even"
-        : probability.awayPct > probability.homePct
-        ? `${away.displayName} edge`
-        : `${home.displayName} edge`;
 
     const frag = document.createDocumentFragment();
 
@@ -234,10 +227,7 @@
               <div class="predictor__logo predictor__logo--left"${awayLogo ? ` style=\"background-image:url('logos/${awayLogo}')\"` : ""}></div>
               <div class="predictor__logo predictor__logo--right"${homeLogo ? ` style=\"background-image:url('logos/${homeLogo}')\"` : ""}></div>
             </div>
-            <div class="predictor__center">
-              <div class="predictor__lead">${(leadPct * 100).toFixed(0)}%</div>
-              <div class="predictor__lead-label">${escapeHtml(leadLabel)}</div>
-            </div>
+            <div class="predictor__center"></div>
           </div>
           <div class="predictor__team-badge predictor__team-badge--home">
             <div class="predictor__team-logo"${homeLogo ? ` style=\"background-image:url('logos/${homeLogo}')\"` : ""}></div>
@@ -249,21 +239,25 @@
           </div>
         </div>
         <div class="predictor__details">
-          <div class="predictor__bar">
-            <div class="predictor__bar-label">
-              <span class="predictor__label-dot predictor__label-dot--away"></span>
-              <span>${escapeHtml(away.displayName)}</span>
+          <div class="predictor__bar predictor__bar--combined">
+            <div class="predictor__bar-legend">
+              <div class="predictor__bar-label">
+                <span class="predictor__label-dot predictor__label-dot--away"></span>
+                <span>${escapeHtml(away.displayName)}</span>
+              </div>
+              <div class="predictor__bar-label predictor__bar-label--home">
+                <span>${escapeHtml(home.displayName)}</span>
+                <span class="predictor__label-dot predictor__label-dot--home"></span>
+              </div>
             </div>
-            <div class="predictor__bar-track"><div class="predictor__bar-fill" style="--pct:${probability.awayPct};"></div></div>
-            <div class="predictor__bar-value">${(probability.awayPct * 100).toFixed(1)}%</div>
-          </div>
-          <div class="predictor__bar predictor__bar--home">
-            <div class="predictor__bar-label">
-              <span class="predictor__label-dot predictor__label-dot--home"></span>
-              <span>${escapeHtml(home.displayName)}</span>
+            <div class="predictor__bar-track predictor__bar-track--split">
+              <div class="predictor__bar-fill predictor__bar-fill--away" style="--pct:${probability.awayPct};"></div>
+              <div class="predictor__bar-fill predictor__bar-fill--home" style="--pct:${probability.homePct};"></div>
             </div>
-            <div class="predictor__bar-track"><div class="predictor__bar-fill" style="--pct:${probability.homePct};"></div></div>
-            <div class="predictor__bar-value">${(probability.homePct * 100).toFixed(1)}%</div>
+            <div class="predictor__bar-values">
+              <div class="predictor__bar-value">${(probability.awayPct * 100).toFixed(1)}%</div>
+              <div class="predictor__bar-value predictor__bar-value--home">${(probability.homePct * 100).toFixed(1)}%</div>
+            </div>
           </div>
           <div class="predictor__note">${escapeHtml(probability.note)}</div>
         </div>
