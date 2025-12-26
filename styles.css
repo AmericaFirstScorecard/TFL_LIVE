@@ -838,6 +838,11 @@ body {
   font-weight: 800;
 }
 
+.breakdown-card--stacked {
+  display: grid;
+  gap: 8px;
+}
+
 .team-stat {
   display: inline-flex;
   align-items: center;
@@ -1070,6 +1075,13 @@ body {
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.2px;
+}
+
+.schedule-game__detail {
+  cursor: pointer;
+  border-color: rgba(96, 165, 250, 0.4);
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.18), rgba(168, 85, 247, 0.12));
+  color: var(--text);
 }
 
 .schedule-game__score {
@@ -1632,6 +1644,93 @@ body {
   height: 32px;
   font-size: 16px;
   cursor: pointer;
+}
+
+.game-detail {
+  display: grid;
+  gap: 14px;
+}
+
+.game-detail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.game-detail__title {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.game-detail__subtitle {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.game-detail__meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.game-detail__score {
+  font-weight: 800;
+  color: var(--text);
+}
+
+.game-detail__chart-meta {
+  font-style: italic;
+}
+
+.game-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.game-detail__chart-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  min-height: 260px;
+}
+
+.game-detail__stats {
+  display: grid;
+  gap: 10px;
+}
+
+.game-detail__meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.game-detail__meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.game-detail__meta-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.game-detail__meta-value {
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .detail {

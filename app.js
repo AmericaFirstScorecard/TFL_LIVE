@@ -2,8 +2,8 @@
   // =======================
   // CONFIG
   // =======================
-  const MATCHUP_CSV_URL =
-    "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?gid=0&single=true&output=csv";
+  const MATCHUP_WORKBOOK_URL =
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxNr3jLVjL4e24TvQR9iSkJP0T_lBiA2Dh5G9iut5_zDksYHEnbsu8k8f5Eo888Aha_UWuZXRhFNV0/pub?output=xlsx";
 
   const MVP_CSV_URL =
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQp0jxVIwA59hH031QxJFBsXdQVIi7fNdPS5Ra2w1lK2UYA08rC0moSSqoKPSFL8BRZFh_hC4cO8ymk/pub?output=xlsx";
@@ -116,6 +116,8 @@
     hasShownConfetti: false,
     matchupVersion: 0,
     matchupRequestInFlight: 0,
+    matchupArchive: new Map(), // gameCode -> parsed matchup
+    lastMatchupGameCode: null,
     sortHandlersAttached: false,
     logoExistCache: new Map(), // filename -> boolean
     lastScores: { a: null, b: null },
@@ -125,6 +127,7 @@
     mvpVersion: 0,
     lastMatchupFetchedAt: null,
     lastMatchupAcceptedAt: null,
+    gameDetailChart: null,
   };
 
   const els = {};
@@ -143,10 +146,11 @@
     initTabs();
     initChart();
     initDetailOverlay();
+    initGameDetailOverlay();
     initPlayerOverlay();
 
     // Debug: proves what your deployed JS is using
-    console.info("[TFL] MATCHUP_CSV_URL =", MATCHUP_CSV_URL);
+    console.info("[TFL] MATCHUP_WORKBOOK_URL =", MATCHUP_WORKBOOK_URL);
     console.info("[TFL] MVP_CSV_URL =", MVP_CSV_URL);
 
     startPolling();
@@ -238,6 +242,15 @@
     els.detailTitle = id("detailTitle");
     els.detailSubtitle = id("detailSubtitle");
     els.detailRecord = id("detailRecord");
+    els.gameDetailOverlay = id("gameDetailOverlay");
+    els.gameDetailClose = id("gameDetailClose");
+    els.gameDetailTitle = id("gameDetailTitle");
+    els.gameDetailSubtitle = id("gameDetailSubtitle");
+    els.gameDetailBadge = id("gameDetailBadge");
+    els.gameDetailScore = id("gameDetailScore");
+    els.gameDetailStats = id("gameDetailStats");
+    els.gameDetailChart = id("gameDetailChart");
+    els.gameDetailChartMeta = id("gameDetailChartMeta");
     els.teamSummary = id("teamSummary");
     els.teamPlayers = id("teamPlayers");
     els.playerDetail = id("playerDetail");
@@ -428,6 +441,23 @@
     });
   }
 
+  function initGameDetailOverlay() {
+    const closeOverlay = () => {
+      if (els.gameDetailOverlay) els.gameDetailOverlay.hidden = true;
+      if (state.gameDetailChart) {
+        state.gameDetailChart.destroy();
+        state.gameDetailChart = null;
+      }
+    };
+    els.gameDetailClose?.addEventListener("click", closeOverlay);
+    els.gameDetailOverlay?.addEventListener("click", (e) => {
+      if (e.target === els.gameDetailOverlay || e.target.classList.contains("overlay__backdrop")) closeOverlay();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && els.gameDetailOverlay && !els.gameDetailOverlay.hidden) closeOverlay();
+    });
+  }
+
   function initPlayerOverlay() {
     const closeOverlay = () => {
       if (els.playerOverlay) els.playerOverlay.hidden = true;
@@ -498,13 +528,16 @@
     const controller = new AbortController();
     state.matchupAbortController = controller;
 
-    const url = overrideUrl("matchup") || MATCHUP_CSV_URL;
+    const url = overrideUrl("matchup") || MATCHUP_WORKBOOK_URL;
 
     try {
-      const text = await fetchText(url, controller.signal);
-      state.lastMatchupFetchedAt = Date.now();
-      const parsed = parseMatchupCSV(text);
-      if (!parsed.snapshots.length) throw new Error("No matchup rows parsed");
+      const isWorkbook = /output=xlsx/i.test(url) || /\.xlsx($|[?#])/i.test(url);
+      const parsedResult = isWorkbook
+        ? await parseMatchupWorkbook(await fetchArrayBuffer(url, controller.signal))
+        : { latest: { ...parseMatchupCSV(await fetchText(url, controller.signal)) }, archive: new Map() };
+
+      const parsed = parsedResult.latest;
+      if (!parsed?.snapshots?.length) throw new Error("No matchup rows parsed");
       if (requestId < state.matchupVersion) return;
       const latestSnapshot = parsed.snapshots[parsed.snapshots.length - 1];
       const nextFreshness = buildSnapshotFreshness(latestSnapshot, parsed.snapshots.length);
@@ -517,8 +550,11 @@
       if (state.matchupAbortController === controller) state.matchupAbortController = null;
       state.lastMatchupFreshness = nextFreshness || state.lastMatchupFreshness;
       state.lastMatchup = parsed;
+      state.matchupArchive = parsedResult.archive || new Map();
+      state.lastMatchupGameCode = parsed.gameCode || null;
       state.lastMatchupAcceptedAt = Date.now();
       renderMatchup(parsed);
+      if (state.lastScheduleGames?.length) renderSchedule(state.lastScheduleGames);
       setLoading(els.winLoading, false);
     } catch (err) {
       if (err?.name === "AbortError") return;
@@ -704,6 +740,11 @@
         const r = normRow(row);
   
         const week = toInt(pick(r, ["round #", "round", "week", "wk", "w"]));
+
+        const gameCodeRaw = String(pick(r, ["game code", "gamecode", "code"]))
+          .trim()
+          .replace(/\s+/g, " ");
+        const gameCode = normalizeGameCode(gameCodeRaw) || (gameCodeRaw || null);
   
         const away = String(pick(r, ["team away", "away", "away team", "team_away"])).trim();
         const home = String(pick(r, ["team home", "home", "home team", "team_home"])).trim();
@@ -739,9 +780,11 @@
         const scoreAway = toScore(pick(r, ["score away", "away score"]));
   
         if (!week || !away || !home) return null;
-  
+
         return {
           week,
+          gameCode,
+          gameCodeRaw,
           away,
           home,
           complete,      // "yes" | "no" | "live"
@@ -807,6 +850,8 @@
     teams.className = "schedule-game__teams";
   
     const completeState = String(game.complete ?? "").trim().toLowerCase(); // "yes" | "no" | "live"
+    const gameCode = normalizeGameCode(game.gameCode || game.gameCodeRaw);
+    const hasDetails = Boolean(gameCode && state.matchupArchive && state.matchupArchive.has(gameCode));
     const isFinal = completeState === "yes";
     const isLive = completeState === "live";
   
@@ -879,13 +924,22 @@
     if (isFinal) statusPill.classList.add("pill--warning");
     if (isLive) statusPill.classList.add("pill--accent"); // optional: make LIVE pop
     statusPill.textContent = statusText;
-  
+
     center.appendChild(timePill);
     center.appendChild(divider);
     center.appendChild(statusPill);
-  
+
+    if (isFinal && hasDetails) {
+      const detailBtn = document.createElement("button");
+      detailBtn.type = "button";
+      detailBtn.className = "pill schedule-game__detail";
+      detailBtn.textContent = "Details";
+      detailBtn.addEventListener("click", () => openGameDetail(gameCode, game));
+      center.appendChild(detailBtn);
+    }
+
     meta.appendChild(center);
-  
+
     wrap.appendChild(teams);
     wrap.appendChild(meta);
   
@@ -958,13 +1012,275 @@
   
       chip.appendChild(schscr);
     }
-  
+
     return chip;
+  }
+
+  function openGameDetail(gameCode, gameFromSchedule) {
+    if (!gameCode || !els.gameDetailOverlay) return;
+    const parsed = state.matchupArchive?.get(gameCode);
+    if (!parsed) return;
+
+    const teamAInfo = resolveTeam(parsed.teamA);
+    const teamBInfo = resolveTeam(parsed.teamB);
+    const stats = deriveMatchupStats(parsed.snapshots, teamAInfo, teamBInfo);
+    const homeSeries = smoothSeries(parsed.snapshots.map((s) => toPct(s.winProbHome)));
+    const metrics = analyzeGame(homeSeries, parsed.snapshots);
+    const latest = parsed.snapshots[parsed.snapshots.length - 1] || {};
+
+    if (els.gameDetailTitle) els.gameDetailTitle.textContent = `Game ${gameCode}`;
+    if (els.gameDetailSubtitle)
+      els.gameDetailSubtitle.textContent = `${teamAInfo.displayName} vs ${teamBInfo.displayName}`;
+
+    const isFinal = (gameFromSchedule?.complete || "").toLowerCase() === "yes" || (latest.minuteLeft ?? 1) <= 0;
+    const badgeText = isFinal ? "Final" : "Live";
+    if (els.gameDetailBadge) {
+      els.gameDetailBadge.textContent = badgeText;
+      els.gameDetailBadge.className = `badge ${isFinal ? "badge--ghost" : ""}`.trim();
+    }
+
+    if (els.gameDetailScore) {
+      const scoreA = stats?.scoreA ?? latest.scoreA ?? "—";
+      const scoreB = stats?.scoreB ?? latest.scoreB ?? "—";
+      els.gameDetailScore.textContent = `${teamAInfo.displayName} ${scoreA} — ${scoreB} ${teamBInfo.displayName}`;
+    }
+
+    if (els.gameDetailChartMeta) {
+      const parts = [];
+      if (parsed.snapshots?.length) parts.push(`${parsed.snapshots.length} updates`);
+      if (latest.update) parts.push(`Last: ${latest.update}`);
+      els.gameDetailChartMeta.textContent = parts.join(" • ");
+    }
+
+    renderGameDetailChart(parsed, teamAInfo, teamBInfo);
+    renderGameDetailStats(stats, metrics, teamAInfo, teamBInfo);
+
+    els.gameDetailOverlay.hidden = false;
+  }
+
+  function renderGameDetailStats(stats, metrics, teamAInfo, teamBInfo) {
+    if (!els.gameDetailStats) return;
+    els.gameDetailStats.innerHTML = "";
+
+    const cards = [
+      { label: "Score", a: formatCount(stats?.scoreA), b: formatCount(stats?.scoreB) },
+      {
+        label: "Avg win prob",
+        a: stats?.avgWinProbA != null ? `${stats.avgWinProbA.toFixed(1)}%` : "—",
+        b: stats?.avgWinProbB != null ? `${stats.avgWinProbB.toFixed(1)}%` : "—",
+      },
+      {
+        label: "Longest scoring run",
+        a: stats?.longestRunA != null ? `+${stats.longestRunA}` : "—",
+        b: stats?.longestRunB != null ? `+${stats.longestRunB}` : "—",
+      },
+      {
+        label: "Time leading",
+        a: stats?.timeLeadingA != null ? formatClock(stats.timeLeadingA) : "—",
+        b: stats?.timeLeadingB != null ? formatClock(stats.timeLeadingB) : "—",
+        note: stats?.timeTied != null ? `Tied ${formatClock(stats.timeTied)}` : "",
+      },
+      { label: "Logged possessions", a: formatCount(stats?.possessionsA), b: formatCount(stats?.possessionsB) },
+    ];
+
+    const metaCards = [
+      { label: "Lead changes", value: formatCount(stats?.leadChanges) },
+      { label: "Current margin", value: stats ? formatSigned(stats.pointDiff) : "—" },
+      { label: "Big swing", value: metrics?.bigSwing ?? "—" },
+      { label: "Momentum", value: metrics?.momentum ?? "—" },
+      { label: "Clutch window", value: metrics?.clutch ?? "—" },
+    ];
+
+    const frag = document.createDocumentFragment();
+
+    const teamBadge = (team) => {
+      const badge = document.createElement("div");
+      badge.className = "team-stat__logo";
+      setLogo(badge, team.logoKey);
+      return badge;
+    };
+
+    const statChip = (team, value, tone) => {
+      const chip = document.createElement("div");
+      chip.className = `team-stat ${tone ? `team-stat--${tone}` : ""}`.trim();
+      chip.appendChild(teamBadge(team));
+      const val = document.createElement("div");
+      val.className = "team-stat__value";
+      val.textContent = value ?? "—";
+      chip.appendChild(val);
+      return chip;
+    };
+
+    cards.forEach((card) => {
+      const div = document.createElement("div");
+      div.className = "breakdown-card";
+      const heading = document.createElement("div");
+      heading.className = "breakdown-card__heading";
+      heading.textContent = card.label;
+
+      const values = document.createElement("div");
+      values.className = "breakdown-card__values";
+      values.appendChild(statChip(teamAInfo, card.a, "left"));
+      values.appendChild(statChip(teamBInfo, card.b, "right"));
+
+      div.appendChild(heading);
+      div.appendChild(values);
+      if (card.note) {
+        const note = document.createElement("div");
+        note.className = "breakdown-card__note";
+        note.textContent = card.note;
+        div.appendChild(note);
+      }
+      frag.appendChild(div);
+    });
+
+    const metaWrap = document.createElement("div");
+    metaWrap.className = "breakdown-card breakdown-card--stacked";
+    const metaHeading = document.createElement("div");
+    metaHeading.className = "breakdown-card__heading";
+    metaHeading.textContent = "Highlights";
+    metaWrap.appendChild(metaHeading);
+
+    const metaGrid = document.createElement("div");
+    metaGrid.className = "game-detail__meta";
+    metaCards.forEach((card) => {
+      const row = document.createElement("div");
+      row.className = "game-detail__meta-row";
+      const label = document.createElement("div");
+      label.className = "game-detail__meta-label";
+      label.textContent = card.label;
+      const value = document.createElement("div");
+      value.className = "game-detail__meta-value";
+      value.textContent = card.value ?? "—";
+      row.appendChild(label);
+      row.appendChild(value);
+      metaGrid.appendChild(row);
+    });
+    metaWrap.appendChild(metaGrid);
+    frag.appendChild(metaWrap);
+
+    els.gameDetailStats.appendChild(frag);
+  }
+
+  function renderGameDetailChart(parsed, teamAInfo, teamBInfo) {
+    if (!els.gameDetailChart) return;
+    const ctx = els.gameDetailChart.getContext("2d");
+    const snapshots = parsed.snapshots || [];
+    if (!snapshots.length) return;
+
+    if (state.gameDetailChart) {
+      state.gameDetailChart.destroy();
+      state.gameDetailChart = null;
+    }
+
+    const maxMinute = Math.max(...snapshots.map((s) => s.minuteLeft ?? 0));
+    const labels = snapshots.map((s) => formatElapsed(Math.max(0, maxMinute - (s.minuteLeft ?? maxMinute))));
+    const home = smoothSeries(snapshots.map((s) => toPct(s.winProbHome)));
+    const away = smoothSeries(snapshots.map((s) => toPct(s.winProbAway)));
+
+    const colorA = teamColor(teamColorKey(teamAInfo));
+    const colorB = teamColor(teamColorKey(teamBInfo));
+
+    const gradient = (color) => {
+      const g = ctx.createLinearGradient(0, 0, 0, 240);
+      g.addColorStop(0, `${color}66`);
+      g.addColorStop(1, `${color}14`);
+      return g;
+    };
+
+    state.gameDetailChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: teamAInfo.displayName,
+            data: away,
+            tension: 0.35,
+            fill: true,
+            spanGaps: false,
+            borderColor: colorA,
+            backgroundColor: gradient(colorA),
+            pointRadius: 0,
+            borderWidth: 3,
+          },
+          {
+            label: teamBInfo.displayName,
+            data: home,
+            tension: 0.35,
+            fill: true,
+            spanGaps: false,
+            borderColor: colorB,
+            backgroundColor: gradient(colorB),
+            pointRadius: 0,
+            borderWidth: 3,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: "#e5e7eb" } },
+          tooltip: {
+            callbacks: {
+              label(ctx) {
+                return `${ctx.dataset.label}: ${ctx.formattedValue}%`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { color: "#9ca3af", maxRotation: 0 }, grid: { color: "rgba(255,255,255,0.05)" } },
+          y: {
+            min: 0,
+            max: 100,
+            ticks: { color: "#9ca3af", callback: (val) => `${val}%` },
+            grid: { color: "rgba(255,255,255,0.05)" },
+          },
+        },
+      },
+    });
   }
 
   // =======================
   // PARSING
   // =======================
+  async function parseMatchupWorkbook(buffer) {
+    if (typeof XLSX === "undefined") throw new Error("XLSX library not loaded");
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const archive = new Map();
+    const sheetNames = workbook.SheetNames || [];
+    sheetNames.forEach((name) => {
+      const parsed = parseMatchupSheet(workbook, name);
+      if (parsed?.snapshots?.length) {
+        const code = normalizeGameCode(parsed.gameCode || name) || name;
+        archive.set(code, { ...parsed, gameCode: code });
+      }
+    });
+
+    if (!archive.size) throw new Error("No matchup sheets parsed");
+
+    const codes = Array.from(archive.keys()).sort(compareGameCodes);
+    const latestCode = codes[codes.length - 1];
+
+    return {
+      latest: archive.get(latestCode),
+      archive,
+    };
+  }
+
+  function parseMatchupSheet(workbook, sheetName) {
+    const sheet = workbook.Sheets?.[sheetName];
+    if (!sheet) return null;
+    const csv = XLSX.utils.sheet_to_csv(sheet);
+    const parsed = parseMatchupCSV(csv);
+    return {
+      ...parsed,
+      gameCode: normalizeGameCode(sheetName) || null,
+    };
+  }
+
   function parseMatchupCSV(text) {
     const rows = d3.csvParse(text);
     if (!rows || !rows.length) {
@@ -2855,6 +3171,21 @@
     if (value == null || Number.isNaN(value)) return null;
     const normalized = value > 1 ? value / 100 : value;
     return Math.min(MAX_DISPLAY_PROB, Math.max(MIN_DISPLAY_PROB, normalized));
+  }
+
+  function normalizeGameCode(raw) {
+    const str = String(raw ?? "").trim();
+    if (!str) return null;
+    const match = str.match(/#?\s*([\d]+)/);
+    if (match) return `#${match[1]}`;
+    return str.startsWith("#") ? str : `#${str}`;
+  }
+
+  function compareGameCodes(a, b) {
+    const numA = parseInt((normalizeGameCode(a) || "").replace(/#/g, ""), 10);
+    const numB = parseInt((normalizeGameCode(b) || "").replace(/#/g, ""), 10);
+    if (Number.isFinite(numA) && Number.isFinite(numB)) return numA - numB;
+    return String(a || "").localeCompare(String(b || ""));
   }
 
   function canonicalTeamKey(raw) {
