@@ -847,8 +847,11 @@
   
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
-    const t = String(game.startTime ?? "").trim();
-    timePill.textContent = t ? t : "UNSCHEDULED";
+
+    const rawTime = String(game.startTime ?? "").trim();
+    const missingTime = !rawTime || /^(-|—|tbd|na|n\/a|null|undefined)$/i.test(rawTime);
+    
+    timePill.textContent = missingTime ? "UNSCHEDULED" : rawTime;
 
     const divider = document.createElement("span");
     divider.style.display = "inline-block";
