@@ -825,18 +825,77 @@ body {
 
 .predictor {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 16px;
-  align-items: stretch;
+  grid-template-columns: minmax(320px, 360px) 1fr;
+  gap: 20px;
+  align-items: center;
+}
+
+.predictor__summary {
+  display: grid;
+  gap: 14px;
+  align-items: center;
+  justify-items: center;
+}
+
+.predictor__team-badge {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: radial-gradient(circle at 20% 20%, rgba(96, 165, 250, 0.18), rgba(255, 255, 255, 0.02));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.predictor__team-badge--home {
+  background: radial-gradient(circle at 80% 20%, rgba(248, 113, 113, 0.18), rgba(255, 255, 255, 0.02));
+}
+
+.predictor__team-logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+}
+
+.predictor__team-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.predictor__team-label {
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.predictor__team-name {
+  font-weight: 700;
+}
+
+.predictor__team-pct {
+  font-weight: 800;
+  color: #9f9dfd;
+}
+
+.predictor__team-pct--home {
+  color: #fca5a5;
 }
 
 .predictor__ring {
   --pct-away-deg: calc(var(--pct-away) * 3.6deg);
   --pct-home-deg: calc(360deg - var(--pct-away-deg));
   position: relative;
-  width: 190px;
-  height: 190px;
-  margin: 4px auto;
+  width: 210px;
+  height: 210px;
   isolation: isolate;
 }
 
@@ -859,21 +918,21 @@ body {
     rgba(248, 113, 113, 0.9) var(--pct-away-deg),
     rgba(248, 113, 113, 0.9) 360deg
   );
-  mask: radial-gradient(circle at center, transparent 62px, black 64px);
+  mask: radial-gradient(circle at center, transparent 68px, black 70px);
 }
 
 .predictor__ring::after {
   content: "";
   position: absolute;
-  inset: 14%;
-  background: radial-gradient(circle, rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.1));
+  inset: 13%;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.18));
   border-radius: 50%;
   z-index: -1;
 }
 
 .predictor__logos {
   position: absolute;
-  inset: 22%;
+  inset: 23%;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   align-items: center;
@@ -904,7 +963,7 @@ body {
 }
 
 .predictor__lead {
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 800;
 }
 
@@ -924,14 +983,14 @@ body {
 .predictor__details {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   justify-content: center;
 }
 
 .predictor__bar {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
   align-items: center;
 }
 
@@ -949,7 +1008,6 @@ body {
 }
 
 .predictor__bar-track {
-  grid-column: 1 / -1;
   position: relative;
   height: 12px;
   border-radius: 999px;
@@ -969,6 +1027,22 @@ body {
   background: linear-gradient(90deg, rgba(248, 113, 113, 0.82), rgba(96, 165, 250, 0.8));
 }
 
+.predictor__label-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 12px rgba(255, 255, 255, 0.08);
+}
+
+.predictor__label-dot--away {
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.95), rgba(168, 85, 247, 0.9));
+}
+
+.predictor__label-dot--home {
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.9), rgba(96, 165, 250, 0.85));
+}
+
 .predictor__note {
   color: var(--muted);
   font-size: 13px;
@@ -979,20 +1053,15 @@ body {
 @media (max-width: 720px) {
   .predictor {
     grid-template-columns: 1fr;
-    justify-items: center;
     text-align: center;
   }
 
-  .predictor__details {
+  .predictor__summary {
     width: 100%;
   }
 
   .predictor__bar {
     grid-template-columns: 1fr;
-  }
-
-  .predictor__bar-value {
-    justify-self: end;
   }
 }
 

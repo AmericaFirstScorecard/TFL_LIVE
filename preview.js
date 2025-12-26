@@ -218,26 +218,50 @@
     predictor.innerHTML = `
       <div class="compare-card__title">Matchup predictor</div>
       <div class="predictor">
-        <div class="predictor__ring" style="--pct-away:${(probability.awayPct * 100).toFixed(1)};--pct-home:${(probability.homePct * 100).toFixed(1)};">
-          <div class="predictor__ring-track"></div>
-          <div class="predictor__ring-fill"></div>
-          <div class="predictor__logos">
-            <div class="predictor__logo predictor__logo--left"${awayLogo ? ` style=\"background-image:url('logos/${awayLogo}')\"` : ""}></div>
-            <div class="predictor__logo predictor__logo--right"${homeLogo ? ` style=\"background-image:url('logos/${homeLogo}')\"` : ""}></div>
+        <div class="predictor__summary">
+          <div class="predictor__team-badge">
+            <div class="predictor__team-logo"${awayLogo ? ` style=\"background-image:url('logos/${awayLogo}')\"` : ""}></div>
+            <div class="predictor__team-copy">
+              <div class="predictor__team-label">Away</div>
+              <div class="predictor__team-name">${escapeHtml(away.displayName)}</div>
+              <div class="predictor__team-pct">${(probability.awayPct * 100).toFixed(1)}%</div>
+            </div>
           </div>
-          <div class="predictor__center">
-            <div class="predictor__lead">${(leadPct * 100).toFixed(0)}%</div>
-            <div class="predictor__lead-label">${escapeHtml(leadLabel)}</div>
+          <div class="predictor__ring" style="--pct-away:${(probability.awayPct * 100).toFixed(1)};--pct-home:${(probability.homePct * 100).toFixed(1)};">
+            <div class="predictor__ring-track"></div>
+            <div class="predictor__ring-fill"></div>
+            <div class="predictor__logos">
+              <div class="predictor__logo predictor__logo--left"${awayLogo ? ` style=\"background-image:url('logos/${awayLogo}')\"` : ""}></div>
+              <div class="predictor__logo predictor__logo--right"${homeLogo ? ` style=\"background-image:url('logos/${homeLogo}')\"` : ""}></div>
+            </div>
+            <div class="predictor__center">
+              <div class="predictor__lead">${(leadPct * 100).toFixed(0)}%</div>
+              <div class="predictor__lead-label">${escapeHtml(leadLabel)}</div>
+            </div>
+          </div>
+          <div class="predictor__team-badge predictor__team-badge--home">
+            <div class="predictor__team-logo"${homeLogo ? ` style=\"background-image:url('logos/${homeLogo}')\"` : ""}></div>
+            <div class="predictor__team-copy">
+              <div class="predictor__team-label">Home</div>
+              <div class="predictor__team-name">${escapeHtml(home.displayName)}</div>
+              <div class="predictor__team-pct predictor__team-pct--home">${(probability.homePct * 100).toFixed(1)}%</div>
+            </div>
           </div>
         </div>
         <div class="predictor__details">
           <div class="predictor__bar">
-            <div class="predictor__bar-label">${escapeHtml(away.displayName)}</div>
+            <div class="predictor__bar-label">
+              <span class="predictor__label-dot predictor__label-dot--away"></span>
+              <span>${escapeHtml(away.displayName)}</span>
+            </div>
             <div class="predictor__bar-track"><div class="predictor__bar-fill" style="--pct:${probability.awayPct};"></div></div>
             <div class="predictor__bar-value">${(probability.awayPct * 100).toFixed(1)}%</div>
           </div>
           <div class="predictor__bar predictor__bar--home">
-            <div class="predictor__bar-label">${escapeHtml(home.displayName)}</div>
+            <div class="predictor__bar-label">
+              <span class="predictor__label-dot predictor__label-dot--home"></span>
+              <span>${escapeHtml(home.displayName)}</span>
+            </div>
             <div class="predictor__bar-track"><div class="predictor__bar-fill" style="--pct:${probability.homePct};"></div></div>
             <div class="predictor__bar-value">${(probability.homePct * 100).toFixed(1)}%</div>
           </div>
