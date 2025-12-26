@@ -259,8 +259,9 @@
         .join(" • ");
       const playerKey = encodeURIComponent(player.player || "");
       const teamParam = encodeURIComponent(state.teamKey || "");
-      const legacyDisplay = player.legacyScore != null ? formatScore(player.legacyScore) : null;
       const legacyBadge = buildLegacyBadge(player);
+      const badgeContent = legacyBadge || `MVP ${formatScore(player.mvpScore)}`;
+      const badgeClass = legacyBadge ? "team-roster__badge team-roster__badge--legacy" : "team-roster__badge";
       card.innerHTML = `
         <div class="team-roster__header">
           ${playerAvatar(player)}
@@ -271,9 +272,8 @@
             <div class="team-roster__meta">MVP ${formatScore(player.mvpScore)} • Win% ${formatPct(player.winPct)}</div>
             ${playerBadges(player)}
           </div>
-          <div class="team-roster__badge">
-            ${legacyDisplay ? `Legacy ${legacyDisplay}` : `MVP ${formatScore(player.mvpScore)}`}
-            ${legacyBadge ? `<div class="team-roster__badge-meta">${legacyBadge}</div>` : ""}
+          <div class="${badgeClass}">
+            ${badgeContent}
           </div>
         </div>
         <div class="team-roster__statline">${statLines || "No stat line yet"}</div>
@@ -429,12 +429,10 @@
     if (!legacy) return "";
     const title = legacy.highlights?.length ? legacy.highlights.join(" • ") : "Legacy impact";
     const score = legacy.roundedScore ?? Math.round(legacy.score ?? 0);
-    return `
-      <div class="legacy-chip legacy-chip--${escapeHtml(legacy.tierKey || "prospect")}" title="${escapeHtml(title)}">
+    return `<div class="legacy-chip legacy-chip--${escapeHtml(legacy.tierKey || "prospect")}" title="${escapeHtml(title)}">
         <span class="legacy-chip__tier">${escapeHtml(legacy.tier || "Legacy")}</span>
         <span class="legacy-chip__score">${score}</span>
-      </div>
-    `;
+      </div>`;
   }
 
   function buildResult(game, isHome) {

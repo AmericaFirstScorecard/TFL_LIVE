@@ -177,6 +177,13 @@
     const probability = buildWinProbability(profileAway, profileHome);
     const awayLogo = logoFile(away.logoKey);
     const homeLogo = logoFile(home.logoKey);
+    const leadPct = Math.max(probability.awayPct, probability.homePct);
+    const leadLabel =
+      probability.awayPct === probability.homePct
+        ? "Dead even"
+        : probability.awayPct > probability.homePct
+        ? `${away.displayName} edge`
+        : `${home.displayName} edge`;
 
     const frag = document.createDocumentFragment();
 
@@ -203,15 +210,21 @@
             <div class="predictor__logo predictor__logo--left"${awayLogo ? ` style=\"background-image:url('logos/${awayLogo}')\"` : ""}></div>
             <div class="predictor__logo predictor__logo--right"${homeLogo ? ` style=\"background-image:url('logos/${homeLogo}')\"` : ""}></div>
           </div>
+          <div class="predictor__center">
+            <div class="predictor__lead">${(leadPct * 100).toFixed(0)}%</div>
+            <div class="predictor__lead-label">${escapeHtml(leadLabel)}</div>
+          </div>
         </div>
         <div class="predictor__details">
-          <div class="predictor__row">
-            <div class="predictor__label">${escapeHtml(away.displayName)}</div>
-            <div class="predictor__value">${(probability.awayPct * 100).toFixed(1)}%</div>
+          <div class="predictor__bar">
+            <div class="predictor__bar-label">${escapeHtml(away.displayName)}</div>
+            <div class="predictor__bar-track"><div class="predictor__bar-fill" style="--pct:${probability.awayPct};"></div></div>
+            <div class="predictor__bar-value">${(probability.awayPct * 100).toFixed(1)}%</div>
           </div>
-          <div class="predictor__row predictor__row--home">
-            <div class="predictor__label">${escapeHtml(home.displayName)}</div>
-            <div class="predictor__value">${(probability.homePct * 100).toFixed(1)}%</div>
+          <div class="predictor__bar predictor__bar--home">
+            <div class="predictor__bar-label">${escapeHtml(home.displayName)}</div>
+            <div class="predictor__bar-track"><div class="predictor__bar-fill" style="--pct:${probability.homePct};"></div></div>
+            <div class="predictor__bar-value">${(probability.homePct * 100).toFixed(1)}%</div>
           </div>
           <div class="predictor__note">${escapeHtml(probability.note)}</div>
         </div>
