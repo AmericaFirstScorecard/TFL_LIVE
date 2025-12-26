@@ -13,7 +13,7 @@
     {
       id: "mvp",
       name: "MVP",
-      description: "Most valuable player honors",
+      description: "Most Valuable Player",
       image: "hardware/MVP.png",
       recipients: [{ type: "player", id: "Brump", display: "Brump" }],
     },
@@ -29,7 +29,7 @@
       name: "Dixie and Yankee Rivalry Trophy",
       description: "To be awarded",
       image: "hardware/yankdix.png",
-      recipients: [],
+      recipients: ["New England Patriots"],
     },
   ];
 
