@@ -2,8 +2,8 @@
   const HARDWARE_AWARDS = [
     {
       id: "szn9bowl",
-      name: "Szn9Bowl Trophy",
-      description: "Season 9 Tate Bowl Champions",
+      name: "Season 9 Tate Bowl Trophy",
+      description: "Awarded during the 9th season of the TFL, the Louisville Cardinals defeated the now defunct Bengals 35-42.",
       image: "hardware/Szn9Bowl.png",
       recipients: [
         { type: "player", id: "Brump", display: "Brump" },
@@ -19,15 +19,15 @@
     },
     {
       id: "bandb",
-      name: "BandB Trophy",
-      description: "Bourbon and Boots Rivalry Trophy",
+      name: "Bourbon and Boots Rivalry Trophy",
+      description: "This trophy, established in season 9, is awarded to the most recent winner of the matchup between the Cardinals and Cowboys.",
       image: "hardware/bandb.png",
       recipients: [{ type: "team", id: "Louisville Cardinals", display: "Louisville Cardinals" }],
     },
     {
       id: "yankdix",
-      name: "Yankdix",
-      description: "Yankee Dixie Rivarly Trophy",
+      name: "Yankee Dixie Rivarly Trophy",
+      description: "The Yankee Dixie rivarly trophy was established in season 10 during a heated exchange between the Cowboys and Patriots.",
       image: "hardware/yankdix.png",
       recipients: [{type: "team", id: "New England Patriots", display: "New England Patriots"}],
     },
