@@ -1258,7 +1258,7 @@ body {
 .bracket__grid {
   display: grid;
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .bracket__grid--board {
@@ -1272,6 +1272,7 @@ body {
 }
 
 .bracket__column--center {
+  align-self: stretch;
   align-items: center;
   justify-content: center;
 }
