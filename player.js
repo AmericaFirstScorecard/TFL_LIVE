@@ -31,11 +31,13 @@
 
   const MVP_WEIGHTS = { pass: 2.0, rush: 1.0, recv: 1.0, def: 1.0, wins: 2 };
   const LOGO_MAP = buildLogoMap();
+  const TEAM_NAME_ALIASES = buildTeamNameAliases();
 
   const state = {
     playerName: "",
     playerRecord: null,
     rosterMap: new Map(),
+    rosterLookup: new Map(),
     standings: [],
     standingsLookup: new Map(),
     players: [],
@@ -89,6 +91,7 @@
     els.playerBackLink = document.getElementById("playerBackLink");
     els.playerHistoryBody = document.getElementById("playerHistoryBody");
     els.playerHistoryEmpty = document.getElementById("playerHistoryEmpty");
+    els.playerStatus = document.getElementById("playerStatus");
   }
 
   async function fetchArrayBuffer(url) {
@@ -140,7 +143,7 @@
       if (!legacy) return rec;
       return {
         ...rec,
-        legacyScore: Math.round(legacy.score ?? 0),
+        legacyScore: legacy.roundedScore ?? Math.round(legacy.score ?? 0),
         legacyTier: legacy.tier,
         legacyTierKey: legacy.tierKey,
         legacyHighlights: legacy.highlights || [],
@@ -152,6 +155,7 @@
     const buffer = await fetchArrayBuffer(MVP_CSV_URL);
     const { mvpRecords, standings, roster } = parseMvpWorkbook(buffer);
     state.rosterMap = roster;
+    state.rosterLookup = buildRosterLookup(roster);
     state.standings = standings;
     state.standingsLookup = buildStandingsLookup(standings);
     await ensureLegacyData();
@@ -180,6 +184,12 @@
     } else if (state.teamKey) {
       state.teamInfo = resolveTeam(state.teamKey);
       state.teamKey = state.teamInfo.canonicalKey;
+    } else {
+      const roster = lookupRosterInfo(state.playerName);
+      if (roster?.team) {
+        state.teamInfo = resolveTeam(roster.team);
+        state.teamKey = state.teamInfo.canonicalKey;
+      }
     }
   }
 
@@ -193,24 +203,36 @@
 
   function renderHero() {
     const player = state.playerRecord;
+    const isActive = Boolean(player);
     const displayName = player?.player || state.playerName;
     if (els.playerName) els.playerName.textContent = displayName;
     setPlayerAvatar(els.playerAvatar, player || { player: displayName });
 
     const metaParts = [];
     const legacy = lookupLegacy(displayName);
+    if (!isActive) metaParts.push("Inactive player");
     if (player) {
       metaParts.push(`MVP ${formatScore(player.mvpScore)}`);
       if (player.winPct != null) metaParts.push(`Win% ${formatPct(player.winPct)}`);
     }
-    if (legacy) metaParts.push(`Legacy ${Math.round(legacy.score)} (${legacy.tier})`);
+    if (legacy) metaParts.push(`Legacy ${legacy.roundedScore ?? Math.round(legacy.score || 0)} (${legacy.tier})`);
     const teamLabel = state.teamInfo ? state.teamInfo.displayName : state.teamKey || "Team";
     if (metaParts.length === 0) metaParts.push("Awaiting stats");
     if (els.playerMeta) els.playerMeta.textContent = metaParts.join(" • ");
 
     if (els.playerTeamLink) {
-      const teamUrl = state.teamInfo ? teamPageUrl(state.teamInfo) : "#";
-      els.playerTeamLink.innerHTML = `<a class="team-link" href="${teamUrl}">Team: ${escapeHtml(teamLabel)}</a>`;
+      if (state.teamInfo?.displayName) {
+        const teamUrl = teamPageUrl(state.teamInfo);
+        els.playerTeamLink.innerHTML = `<a class="team-link" href="${teamUrl}">Team: ${escapeHtml(teamLabel)}</a>`;
+      } else {
+        els.playerTeamLink.textContent = "No active team";
+      }
+    }
+
+    if (els.playerStatus) {
+      els.playerStatus.hidden = false;
+      els.playerStatus.textContent = isActive ? "Active player" : "Inactive player";
+      els.playerStatus.className = `badge ${isActive ? "badge--accent" : "badge--warning"}`;
     }
   }
 
@@ -263,7 +285,7 @@
     cards.push({ label: "MVP Score", value: player ? formatScore(player.mvpScore) : "—" });
     cards.push({
       label: "Legacy",
-      value: legacy ? `${Math.round(legacy.score)} (${legacy.tier})` : "—",
+      value: legacy ? `${legacy.roundedScore ?? Math.round(legacy.score || 0)} (${legacy.tier})` : "—",
     });
     cards.push({ label: "Win%", value: player ? formatPct(player.winPct) : "—" });
     cards.push({ label: "Wins", value: player ? formatCount(player.wins) : "—" });
@@ -603,13 +625,20 @@
       .replace(/[^a-z0-9]+/g, "");
   }
 
+  function lookupRosterInfo(name) {
+    const key = normalizePlayerKey(name);
+    if (!key) return null;
+    if (state.rosterLookup?.has(key)) return state.rosterLookup.get(key);
+    for (const [raw, info] of state.rosterMap.entries()) {
+      if (normalizePlayerKey(raw) === key) return { ...info, name: raw };
+    }
+    return null;
+  }
+
   function findPlayerSeasonHistory(playerName) {
     const key = normalizePlayerKey(playerName);
     if (!key) return [];
     const records = [];
-
-    const allTime = state.seasonStats.allTime.get(key);
-    if (allTime) records.push({ ...allTime, kind: "all-time" });
 
     (state.seasonStats.order || []).forEach((season) => {
       const seasonRows = state.seasonStats.seasons.get(season) || [];
@@ -813,6 +842,16 @@
     return map;
   }
 
+  function buildRosterLookup(map) {
+    const lookup = new Map();
+    (map || new Map()).forEach((info, name) => {
+      const key = normalizePlayerKey(name);
+      if (!key) return;
+      lookup.set(key, { ...info, name });
+    });
+    return lookup;
+  }
+
   function parseStandingsSheet(workbook) {
     const sheetName =
       workbook.SheetNames.find((n) => n.toLowerCase().includes("standing")) || workbook.SheetNames[0];
@@ -1003,6 +1042,26 @@
     return map;
   }
 
+  function buildTeamNameAliases() {
+    const map = new Map();
+    Object.entries(TEAM_CODE_MAP).forEach(([key, info]) => {
+      if (!info?.name) return;
+      const norm = normalizeTeamKey(info.name);
+      if (!map.has(norm)) map.set(norm, key);
+    });
+    return map;
+  }
+
+  function prettifyTeamName(name) {
+    const clean = String(name || "").trim();
+    if (!clean) return "Team";
+    return clean
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }
+
   function canonicalTeamKey(raw) {
     const cleaned = String(raw ?? "").trim();
     if (!cleaned) return null;
@@ -1016,7 +1075,9 @@
     const norm = normalizeTeamKey(cleaned);
     if (TEAM_CODE_MAP[cleaned]) return cleaned;
     if (TEAM_CODE_MAP[norm]) return norm;
-    return null;
+    const alias = TEAM_NAME_ALIASES.get(norm);
+    if (alias) return alias;
+    return norm;
   }
 
   function normalizeTeamKey(name) {
@@ -1029,9 +1090,10 @@
     const cleaned = String(raw ?? "").trim();
     if (!cleaned) return { displayName: "Team", logoKey: "", canonicalKey: "" };
 
-    const canonical = canonicalTeamKey(cleaned);
+    const alias = TEAM_NAME_ALIASES.get(normalizeTeamKey(cleaned));
+    const canonical = alias || canonicalTeamKey(cleaned);
     const codeMatch = canonical ? TEAM_CODE_MAP[canonical] : null;
-    const displayName = codeMatch?.name || cleaned;
+    const displayName = codeMatch?.name || prettifyTeamName(cleaned);
     const logoKey = codeMatch?.logo || (canonical || normalizeTeamKey(displayName));
 
     return { displayName, logoKey, canonicalKey: canonical || normalizeTeamKey(displayName) };
@@ -1090,9 +1152,10 @@
 
   function setPlayerAvatar(el, rec) {
     if (!el) return;
-    const image = rec?.image || state.rosterMap.get(rec?.player || "")?.image || null;
+    const roster = lookupRosterInfo(rec?.player || state.playerName);
+    const image = rec?.image || roster?.image || null;
     if (image) {
-      el.style.backgroundImage = `url('${escapeHtml(image)}')`;
+      el.style.backgroundImage = `url('${image}')`;
       el.textContent = "";
       return;
     }

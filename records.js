@@ -1,10 +1,15 @@
 (() => {
+  const MVP_CSV_URL =
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQp0jxVIwA59hH031QxJFBsXdQVIi7fNdPS5Ra2w1lK2UYA08rC0moSSqoKPSFL8BRZFh_hC4cO8ymk/pub?output=xlsx";
+
   const els = {};
   const state = {
     records: [],
     awards: [],
     tateBowls: [],
     legacy: [],
+    rosterMap: new Map(),
+    rosterLookup: new Map(),
   };
 
   document.addEventListener("DOMContentLoaded", () => {
@@ -45,11 +50,13 @@
   async function loadData() {
     try {
       if (!window.Legacy?.loadLegacyData) throw new Error("Legacy loader missing");
-      const data = await window.Legacy.loadLegacyData();
+      const [data, roster] = await Promise.all([window.Legacy.loadLegacyData(), fetchRoster()]);
       state.records = data.records || [];
       state.awards = data.awards || [];
       state.tateBowls = data.tateBowls || [];
       state.legacy = data.leaderboard || [];
+      state.rosterMap = roster.map;
+      state.rosterLookup = roster.lookup;
       renderRecords();
       renderLegacy();
       renderAwards();
@@ -75,7 +82,7 @@
       tr.innerHTML = `
         <td>${escapeHtml(row.stat)}</td>
         <td>${formatNumber(row.record)}</td>
-        <td>${escapeHtml(row.player)}</td>
+        <td>${renderPlayerCell(row.player)}</td>
         <td>${formatSeason(row.season)}</td>
       `;
       frag.appendChild(tr);
@@ -94,24 +101,26 @@
     const frag = document.createDocumentFragment();
     state.legacy.slice(0, 50).forEach((row, idx) => {
       const tr = document.createElement("tr");
+      const score = row.roundedScore ?? Math.round(row.score ?? 0);
+      const roster = lookupRoster(row.name);
+      const highlights = row.highlights || [];
       tr.innerHTML = `
         <td>${idx + 1}</td>
         <td>
           <div class="player">
-            <div class="player__avatar player__avatar--sm" aria-hidden="true">${(idx + 1) <= 3 ? "⭐" : "🏈"}</div>
+            ${playerAvatar(row.name, roster?.image)}
             <div>
               <div class="player__name">${escapeHtml(row.name)}</div>
-              <div class="details">${row.highlights.map(escapeHtml).join(" • ") || "Impact incoming"}</div>
             </div>
           </div>
         </td>
         <td>
           <div class="legacy-chip legacy-chip--${escapeHtml(row.tierKey || "prospect")}">
             <span class="legacy-chip__tier">${escapeHtml(row.tier || "Legacy")}</span>
-            <span class="legacy-chip__score">${formatNumber(row.score)}</span>
+            <span class="legacy-chip__score">${formatNumber(score)}</span>
           </div>
         </td>
-        <td>${escapeHtml(row.highlights.join(" • ") || "—")}</td>
+        <td>${escapeHtml(highlights.join(" • ") || "—")}</td>
       `;
       frag.appendChild(tr);
     });
@@ -183,5 +192,116 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
+  }
+
+  async function fetchRoster() {
+    const buffer = await fetchArrayBuffer(MVP_CSV_URL);
+    return parseRosterSheet(buffer);
+  }
+
+  async function fetchArrayBuffer(url) {
+    const u = new URL(url, window.location.href);
+    u.searchParams.set("_cb", Date.now().toString());
+    const res = await fetch(u.toString(), { method: "GET", cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.arrayBuffer();
+  }
+
+  function parseRosterSheet(buffer) {
+    if (typeof XLSX === "undefined") throw new Error("XLSX missing");
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const sheetName = workbook.SheetNames.find((n) => n.toLowerCase().includes("roster"));
+    const map = new Map();
+    const lookup = new Map();
+    if (!sheetName) return { map, lookup };
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "", range: 2 });
+    const imageKeys = [
+      "Image",
+      "image",
+      "Image URL",
+      "Image Link",
+      "Image link",
+      "Photo",
+      "photo",
+      "player image",
+    ];
+    rows.forEach((row) => {
+      const player = String(row.Player || row.player || "").trim();
+      if (!player) return;
+      const team = String(row.Team || row.team || "").trim();
+      const image = imageKeys
+        .map((key) => row[key])
+        .find((val) => val != null && String(val).trim() !== "");
+      const imageUrl = String(image || "").trim();
+      const info = { team, image: imageUrl || null };
+      map.set(player, info);
+      const norm = normalizePlayerKey(player);
+      if (norm) lookup.set(norm, { ...info, name: player });
+    });
+    return { map, lookup };
+  }
+
+  function normalizePlayerKey(name) {
+    return String(name || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "");
+  }
+
+  function lookupRoster(name) {
+    const norm = normalizePlayerKey(name);
+    if (!norm) return null;
+    return state.rosterMap.get(name) || state.rosterLookup.get(norm) || null;
+  }
+
+  function initials(name) {
+    return String(name)
+      .split(" ")
+      .filter(Boolean)
+      .map((p) => p[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+  }
+
+  function playerAvatar(name, image) {
+    const hasImage = Boolean(image);
+    const div = document.createElement("div");
+    div.className = `player__avatar player__avatar--sm${hasImage ? " player__avatar--photo" : ""}`;
+    if (hasImage) {
+      div.style.backgroundImage = `url('${image}')`;
+    } else {
+      div.textContent = initials(name);
+    }
+    return div.outerHTML;
+  }
+
+  function playerPageUrl(playerName, teamKey) {
+    const encodedName = encodeURIComponent(playerName || "");
+    const team = teamKey ? `&team=${encodeURIComponent(teamKey)}` : "";
+    return `player.html?name=${encodedName}${team}`;
+  }
+
+  function renderPlayerCell(playerName) {
+    const roster = lookupRoster(playerName);
+    const link = document.createElement("a");
+    link.className = "team-link team-link--block";
+    link.href = playerPageUrl(playerName, roster?.team);
+    link.textContent = playerName || "Player";
+
+    const body = document.createElement("div");
+    body.appendChild(link);
+    if (roster?.team) {
+      const meta = document.createElement("div");
+      meta.className = "details";
+      meta.textContent = roster.team;
+      body.appendChild(meta);
+    }
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "player";
+    wrapper.insertAdjacentHTML("afterbegin", playerAvatar(playerName, roster?.image));
+    wrapper.appendChild(body);
+
+    return wrapper.outerHTML;
   }
 })();

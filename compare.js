@@ -26,6 +26,7 @@
     bills: { name: "Buffalo Bills", logo: "bills" },
   };
 
+  const TEAM_NAME_ALIASES = buildTeamNameAliases();
   const LOGO_MAP = buildLogoMap();
 
   const state = {
@@ -367,9 +368,10 @@
     const cleaned = String(raw ?? "").trim();
     if (!cleaned) return { displayName: "Team", logoKey: "", canonicalKey: "" };
 
-    const canonical = canonicalTeamKey(cleaned);
+    const alias = TEAM_NAME_ALIASES.get(normalizeTeamKey(cleaned));
+    const canonical = alias || canonicalTeamKey(cleaned);
     const codeMatch = canonical ? TEAM_CODE_MAP[canonical] : null;
-    const displayName = codeMatch?.name || cleaned;
+    const displayName = codeMatch?.name || prettifyTeamName(cleaned);
     const logoKey = codeMatch?.logo || (canonical || normalizeTeamKey(displayName));
 
     return { displayName, logoKey, canonicalKey: canonical || normalizeTeamKey(displayName) };
@@ -388,6 +390,8 @@
     const norm = normalizeTeamKey(cleaned);
     if (TEAM_CODE_MAP[cleaned]) return cleaned;
     if (TEAM_CODE_MAP[norm]) return norm;
+    const alias = TEAM_NAME_ALIASES.get(norm);
+    if (alias) return alias;
     return norm;
   }
 
@@ -845,6 +849,26 @@
       map[info.logo.toLowerCase()] = file;
     });
     return map;
+  }
+
+  function buildTeamNameAliases() {
+    const map = new Map();
+    Object.entries(TEAM_CODE_MAP).forEach(([key, info]) => {
+      if (!info?.name) return;
+      const norm = normalizeTeamKey(info.name);
+      if (!map.has(norm)) map.set(norm, key);
+    });
+    return map;
+  }
+
+  function prettifyTeamName(name) {
+    const clean = String(name || "").trim();
+    if (!clean) return "Team";
+    return clean
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
   }
 
   function formatRecord(row) {
