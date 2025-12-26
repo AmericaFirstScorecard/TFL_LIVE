@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Player detail page for Tate Football League." />
+  <title>TFL Player Page</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="logos/TFLs.svg">
+  <script defer src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="hardware.js"></script>
+  <script defer src="player.js"></script>
+</head>
+<body>
+  <div class="page team-page">
+    <div class="team-page__header">
+      <a class="team-page__back" id="playerBackLink" href="index.html">← Back</a>
+      <div class="brand">TFL Live Monitor</div>
+    </div>
+
+    <section class="team-hero" id="playerHero">
+      <div class="team-hero__logo player-hero__avatar" id="playerAvatar"></div>
+      <div>
+        <h1 class="team-hero__name" id="playerName">Loading player…</h1>
+        <div class="team-hero__meta" id="playerMeta"></div>
+        <div class="team-hero__meta" id="playerTeamLink"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="team-section__title">Hardware</div>
+      <div class="team-section__subtitle">Trophies and awards assigned to this player</div>
+      <div class="hardware-grid" id="playerHardware"></div>
+      <div class="state state--empty" id="playerHardwareEmpty" hidden>No hardware assigned yet.</div>
+    </section>
+
+    <section class="panel">
+      <div class="team-section__title">Player stats</div>
+      <div class="team-section__subtitle">Season snapshot</div>
+      <div class="team-panels" id="playerStats"></div>
+    </section>
+
+    <section class="panel">
+      <div class="team-section__title">Schedule</div>
+      <div class="team-section__subtitle">Games for their current team</div>
+      <div class="team-schedule" id="playerSchedule"></div>
+      <div class="state state--empty" id="playerScheduleEmpty" hidden>No schedule available.</div>
+    </section>
+
+    <section class="panel">
+      <div class="team-section__title">Historical stats</div>
+      <div class="team-section__subtitle">Multi-season view</div>
+      <div class="state">COMING SOON</div>
+    </section>
+
+    <div class="team-error" id="playerError" hidden>Unable to load player data.</div>
+  </div>
+</body>
+</html>

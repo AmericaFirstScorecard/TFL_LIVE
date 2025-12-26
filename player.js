@@ -26,40 +26,19 @@
     bills: { name: "Buffalo Bills", logo: "bills" },
   };
 
-  const STANDINGS_ALIASES = {
-    lou: "lou",
-    cards: "lou",
-    cardinals: "lou",
-    "louisville cardinals": "lou",
-    was: "was",
-    redskins: "was",
-    "washington redskins": "was",
-    dal: "dal",
-    cowboys: "dal",
-    "dallas cowboys": "dal",
-    ne: "ne",
-    patriots: "ne",
-    "new england patriots": "ne",
-    buf: "buf",
-    bills: "buf",
-    "buffalo bills": "buf",
-    bal: "bal",
-    ravens: "bal",
-    "baltimore ravens": "bal",
-  };
-
   const MVP_WEIGHTS = { pass: 2.0, rush: 1.0, recv: 1.0, def: 1.0, wins: 2 };
   const LOGO_MAP = buildLogoMap();
 
   const state = {
-    teamKey: null,
-    teamInfo: null,
+    playerName: "",
+    playerRecord: null,
+    rosterMap: new Map(),
     standings: [],
     standingsLookup: new Map(),
-    rosterMap: new Map(),
-    playersByTeam: new Map(),
+    players: [],
     scheduleGames: [],
-    logoExistCache: new Map(),
+    teamInfo: null,
+    teamKey: "",
   };
 
   const els = {};
@@ -67,38 +46,41 @@
   document.addEventListener("DOMContentLoaded", () => {
     cacheEls();
     const params = new URLSearchParams(window.location.search);
+    const nameParam = params.get("name") || params.get("player") || "";
     const teamParam = params.get("team") || "";
-    const canonical = canonicalTeamKey(teamParam) || normalizeTeamKey(teamParam);
-    if (!canonical) return showError("Team not found. Try opening from the main dashboard.");
+    if (!nameParam) return showError("Player not found. Try opening from a team page.");
 
-    state.teamKey = canonical;
-    state.teamInfo = resolveTeam(teamParam);
-    renderHero();
+    state.playerName = nameParam;
+    state.teamKey = teamParam;
+    const backTarget = teamParam ? `team.html?team=${encodeURIComponent(teamParam)}` : "index.html";
+    if (els.playerBackLink) els.playerBackLink.href = backTarget;
+
     loadData();
   });
 
   async function loadData() {
     try {
       await Promise.all([fetchMvp(), fetchSchedule()]);
+      resolvePlayer();
       renderPage();
     } catch (err) {
       console.error(err);
-      showError("Unable to load team data. Please try again.");
+      showError("Unable to load player data. Please try again.");
     }
   }
 
   function cacheEls() {
-    els.teamName = document.getElementById("teamName");
-    els.teamLogo = document.getElementById("teamLogo");
-    els.teamMeta = document.getElementById("teamMeta");
-    els.teamHardware = document.getElementById("teamHardware");
-    els.teamHardwareEmpty = document.getElementById("teamHardwareEmpty");
-    els.teamTotals = document.getElementById("teamTotals");
-    els.teamRoster = document.getElementById("teamRoster");
-    els.teamRosterEmpty = document.getElementById("teamRosterEmpty");
-    els.teamSchedule = document.getElementById("teamSchedule");
-    els.teamScheduleEmpty = document.getElementById("teamScheduleEmpty");
-    els.teamError = document.getElementById("teamError");
+    els.playerName = document.getElementById("playerName");
+    els.playerAvatar = document.getElementById("playerAvatar");
+    els.playerMeta = document.getElementById("playerMeta");
+    els.playerTeamLink = document.getElementById("playerTeamLink");
+    els.playerHardware = document.getElementById("playerHardware");
+    els.playerHardwareEmpty = document.getElementById("playerHardwareEmpty");
+    els.playerStats = document.getElementById("playerStats");
+    els.playerSchedule = document.getElementById("playerSchedule");
+    els.playerScheduleEmpty = document.getElementById("playerScheduleEmpty");
+    els.playerError = document.getElementById("playerError");
+    els.playerBackLink = document.getElementById("playerBackLink");
   }
 
   async function fetchArrayBuffer(url) {
@@ -125,7 +107,7 @@
     state.rosterMap = roster;
     state.standings = standings;
     state.standingsLookup = buildStandingsLookup(standings);
-    state.playersByTeam = buildPlayersByTeam(mvpRecords);
+    state.players = mvpRecords;
   }
 
   async function fetchSchedule() {
@@ -133,121 +115,108 @@
     state.scheduleGames = parseScheduleCSV(text);
   }
 
-  function renderPage() {
-    const standing = lookupStanding(state.standingsLookup, state.teamKey) ||
-      lookupStanding(state.standingsLookup, state.teamInfo.displayName);
-    const players =
-      state.playersByTeam.get(state.teamKey) ||
-      state.playersByTeam.get(normalizeTeamKey(state.teamInfo.displayName)) ||
-      [];
+  function resolvePlayer() {
+    const target = normalizeTeamKey(state.playerName);
+    state.playerRecord =
+      state.players.find((p) => normalizeTeamKey(p.player) === target) ||
+      state.players.find((p) => normalizeTeamKey(p.player).includes(target));
 
-    renderHero(standing);
-    renderHardware(players);
-    renderTotals(players, standing);
-    renderRoster(players, standing);
+    if (state.playerRecord) {
+      state.teamInfo = resolveTeam(state.playerRecord.team);
+      state.teamKey = state.teamInfo.canonicalKey;
+    } else if (state.teamKey) {
+      state.teamInfo = resolveTeam(state.teamKey);
+      state.teamKey = state.teamInfo.canonicalKey;
+    }
+  }
+
+  function renderPage() {
+    renderHero();
+    renderHardware();
+    renderStats();
     renderSchedule(state.scheduleGames);
   }
 
-  function renderHero(standing) {
-    if (els.teamName) els.teamName.textContent = state.teamInfo.displayName;
-    if (els.teamLogo) setLogo(els.teamLogo, state.teamInfo.logoKey);
+  function renderHero() {
+    const player = state.playerRecord;
+    const displayName = player?.player || state.playerName;
+    if (els.playerName) els.playerName.textContent = displayName;
+    setPlayerAvatar(els.playerAvatar, player || { player: displayName });
 
-    if (!els.teamMeta) return;
     const metaParts = [];
-    if (standing) metaParts.push(formatRecord(standing));
-    if (standing?.winPct != null) metaParts.push(`Win% ${formatPct(standing.winPct)}`);
-    metaParts.push(`Page refreshed ${new Date().toLocaleTimeString()}`);
-    els.teamMeta.textContent = metaParts.join(" • ");
+    if (player) {
+      metaParts.push(`MVP ${formatScore(player.mvpScore)}`);
+      if (player.winPct != null) metaParts.push(`Win% ${formatPct(player.winPct)}`);
+    }
+    const teamLabel = state.teamInfo ? state.teamInfo.displayName : state.teamKey || "Team";
+    if (metaParts.length === 0) metaParts.push("Awaiting stats");
+    if (els.playerMeta) els.playerMeta.textContent = metaParts.join(" • ");
+
+    if (els.playerTeamLink) {
+      const teamUrl = state.teamInfo ? teamPageUrl(state.teamInfo) : "#";
+      els.playerTeamLink.innerHTML = `<a class="team-link" href="${teamUrl}">Team: ${escapeHtml(teamLabel)}</a>`;
+    }
   }
 
-  function renderTotals(players, standing) {
-    if (!els.teamTotals) return;
-    els.teamTotals.innerHTML = "";
-    const totals = computeTeamTotals(players);
+  function renderHardware() {
+    if (!els.playerHardware) return;
+    els.playerHardware.innerHTML = "";
+    const awards = window.listHardwareForPlayer?.(state.playerName) || [];
+    const filtered = awards.filter((a) => a.recipients?.length);
+
+    if (!filtered.length) {
+      if (els.playerHardwareEmpty) els.playerHardwareEmpty.hidden = false;
+      return;
+    }
+    if (els.playerHardwareEmpty) els.playerHardwareEmpty.hidden = true;
+
+    const frag = document.createDocumentFragment();
+    filtered.forEach((award) => frag.appendChild(buildHardwareCard(award)));
+
+    els.playerHardware.appendChild(frag);
+  }
+
+  function renderStats() {
+    if (!els.playerStats) return;
+    els.playerStats.innerHTML = "";
+    const player = state.playerRecord;
+    const standing = lookupStanding(state.standingsLookup, state.teamInfo?.displayName);
+
     const cards = [];
+    cards.push({ label: "Team", value: state.teamInfo?.displayName || "—" });
+    cards.push({ label: "MVP Score", value: player ? formatScore(player.mvpScore) : "—" });
+    cards.push({ label: "Win%", value: player ? formatPct(player.winPct) : "—" });
+    cards.push({ label: "Wins", value: player ? formatCount(player.wins) : "—" });
+    if (standing) cards.push({ label: "Team Record", value: formatRecord(standing) });
 
-    cards.push({ label: "Record", value: standing ? formatRecord(standing) : "—" });
-    cards.push({ label: "Win%", value: standing?.winPct != null ? formatPct(standing.winPct) : "—" });
-    if (standing?.points != null) cards.push({ label: "League Points", value: formatCount(standing.points) });
-    if (standing?.plusMinus != null) cards.push({ label: "Point Diff", value: formatSigned(standing.plusMinus) });
-
-    cards.push({ label: "Offense yards", value: formatCount(totals.offenseYards) });
-    cards.push({ label: "Pass yards", value: formatCount(totals.passYards) });
-    cards.push({ label: "Rush yards", value: formatCount(totals.rushYards) });
-    cards.push({ label: "Receiving yards", value: formatCount(totals.recvYards) });
-    cards.push({ label: "Total TD", value: formatCount(totals.totalTd) });
-    cards.push({ label: "Passing TD", value: formatCount(totals.passTd) });
-    cards.push({ label: "Rushing TD", value: formatCount(totals.rushTd) });
-    cards.push({ label: "Return TD", value: formatCount(totals.returnTd) });
-    cards.push({ label: "Def INT", value: formatCount(totals.defInt) });
-    cards.push({ label: "Sacks", value: formatCount(totals.sacks) });
-    cards.push({ label: "Tackles", value: formatCount(totals.tackles) });
+    const statLines = player ? buildPlayerStatLines(player) : [];
+    statLines.forEach((line) => cards.push({ label: line.label, value: line.value }));
 
     const frag = document.createDocumentFragment();
     cards.forEach((card) => {
       const div = document.createElement("div");
       div.className = "team-stat-card";
       div.innerHTML = `
-        <div class="team-stat-card__label">${card.label}</div>
-        <div class="team-stat-card__value">${card.value}</div>
+        <div class="team-stat-card__label">${escapeHtml(card.label)}</div>
+        <div class="team-stat-card__value">${escapeHtml(card.value)}</div>
       `;
       frag.appendChild(div);
     });
 
-    els.teamTotals.appendChild(frag);
-  }
-
-  function renderRoster(players, standing) {
-    if (!els.teamRoster) return;
-    els.teamRoster.innerHTML = "";
-
-    if (!players.length) {
-      if (els.teamRosterEmpty) els.teamRosterEmpty.hidden = false;
-      return;
-    }
-    if (els.teamRosterEmpty) els.teamRosterEmpty.hidden = true;
-
-    const frag = document.createDocumentFragment();
-    players.forEach((player) => {
-      const card = document.createElement("div");
-      card.className = "team-roster__card";
-      const statLines = buildPlayerStatLines(player)
-        .map((line) => `${line.label}: ${line.value}`)
-        .join(" • ");
-      const playerKey = encodeURIComponent(player.player || "");
-      const teamParam = encodeURIComponent(state.teamKey || "");
-      card.innerHTML = `
-        <div class="team-roster__header">
-          ${playerAvatar(player)}
-          <div>
-            <a class="team-link team-link--block" href="player.html?name=${playerKey}&team=${teamParam}">
-              <div class="team-roster__name">${escapeHtml(player.player)}</div>
-            </a>
-            <div class="team-roster__meta">MVP ${formatScore(player.mvpScore)} • Win% ${formatPct(player.winPct)}</div>
-            <div class="team-roster__meta">${standing ? formatRecord(standing) : "Record —"}</div>
-            ${playerBadges(player)}
-          </div>
-          <div class="team-roster__badge">${formatScore(player.mvpScore)}</div>
-        </div>
-        <div class="team-roster__statline">${statLines || "No stat line yet"}</div>
-      `;
-      frag.appendChild(card);
-    });
-
-    els.teamRoster.appendChild(frag);
+    els.playerStats.appendChild(frag);
   }
 
   function renderSchedule(games) {
-    if (!els.teamSchedule) return;
-    els.teamSchedule.innerHTML = "";
+    if (!els.playerSchedule) return;
+    els.playerSchedule.innerHTML = "";
     const targetKey = state.teamKey;
     const filtered = (games || []).filter((g) => teamInGame(g, targetKey));
 
     if (!filtered.length) {
-      if (els.teamScheduleEmpty) els.teamScheduleEmpty.hidden = false;
+      if (els.playerScheduleEmpty) els.playerScheduleEmpty.hidden = false;
       return;
     }
-    if (els.teamScheduleEmpty) els.teamScheduleEmpty.hidden = true;
+    if (els.playerScheduleEmpty) els.playerScheduleEmpty.hidden = true;
 
     filtered.sort((a, b) => a.week - b.week);
     const frag = document.createDocumentFragment();
@@ -297,57 +266,7 @@
       frag.appendChild(card);
     });
 
-    els.teamSchedule.appendChild(frag);
-  }
-
-  function renderHardware(players) {
-    if (!els.teamHardware) return;
-    els.teamHardware.innerHTML = "";
-    const awardsMap = new Map();
-
-    const addAward = (award) => {
-      if (!award) return;
-      if (!awardsMap.has(award.id)) awardsMap.set(award.id, { ...award, recipients: [] });
-      const entry = awardsMap.get(award.id);
-      (award.recipients || []).forEach((r) => entry.recipients.push(r));
-    };
-
-    const teamAwards = (window.listHardwareForTeam?.(state.teamInfo.displayName, normalizeTeamKey) || []);
-    teamAwards.forEach(addAward);
-
-    players.forEach((player) => {
-      const playerAwards = window.listHardwareForPlayer?.(player.player) || [];
-      playerAwards.forEach(addAward);
-    });
-
-    const awards = Array.from(awardsMap.values());
-    if (!awards.length) {
-      if (els.teamHardwareEmpty) els.teamHardwareEmpty.hidden = false;
-      return;
-    }
-    if (els.teamHardwareEmpty) els.teamHardwareEmpty.hidden = true;
-
-    const frag = document.createDocumentFragment();
-    awards.forEach((award) => frag.appendChild(buildHardwareCard(award)));
-
-    els.teamHardware.appendChild(frag);
-  }
-
-  function playerBadges(player) {
-    const awards = window.listHardwareForPlayer?.(player.player) || [];
-    if (!awards.length) return "";
-    const badges = awards
-      .filter((award) => award.recipients && award.recipients.length)
-      .map(
-        (award) => `
-      <div class="player-badge">
-        <div class="player-badge__icon" style="background-image:url('${escapeHtml(award.image)}')"></div>
-        <span>${escapeHtml(award.name)}</span>
-      </div>`
-      )
-      .join("");
-    if (!badges) return "";
-    return `<div class="team-roster__badges">${badges}</div>`;
+    els.playerSchedule.appendChild(frag);
   }
 
   function buildResult(game, isHome) {
@@ -369,44 +288,6 @@
     if (completeState === "live") return { label: "LIVE", className: "team-pill--accent" };
     if (hasTime) return { label: "UPCOMING", className: "team-pill" };
     return { label: "UNSCHEDULED", className: "team-pill" };
-  }
-
-  function computeTeamTotals(players) {
-    const totals = {
-      passYards: 0,
-      rushYards: 0,
-      recvYards: 0,
-      passTd: 0,
-      rushTd: 0,
-      recvTd: 0,
-      returnTd: 0,
-      totalTd: 0,
-      tackles: 0,
-      sacks: 0,
-      defInt: 0,
-    };
-
-    const add = (key, value) => {
-      const n = parseNumber(value);
-      totals[key] += Number.isFinite(n) ? n : 0;
-    };
-
-    players.forEach((p) => {
-      add("passYards", p.yards);
-      add("rushYards", p.rushYards);
-      add("recvYards", p.recvYards);
-      add("passTd", p.passTd);
-      add("rushTd", p.rushTd);
-      add("recvTd", p.recvTd);
-      add("returnTd", p.returnTd);
-      add("totalTd", p.totalTd ?? (p.passTd || 0) + (p.rushTd || 0) + (p.recvTd || 0) + (p.returnTd || 0));
-      add("tackles", p.tackles);
-      add("sacks", p.sacks);
-      add("defInt", p.defInt);
-    });
-
-    totals.offenseYards = totals.passYards + totals.rushYards + totals.recvYards;
-    return totals;
   }
 
   function teamInGame(game, targetKey) {
@@ -731,23 +612,7 @@
     const norm = normalizeTeamKey(raw);
     if (!norm) return null;
     if (map.has(norm)) return map.get(norm);
-    const alias = STANDINGS_ALIASES[norm];
-    if (alias && map.has(alias)) return map.get(alias);
     return null;
-  }
-
-  function buildPlayersByTeam(records) {
-    const map = new Map();
-    records.forEach((rec) => {
-      const key = canonicalTeamKey(rec.team) || normalizeTeamKey(rec.team);
-      if (!key) return;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(rec);
-    });
-    map.forEach((arr) =>
-      arr.sort((a, b) => (b.mvpScore ?? 0) - (a.mvpScore ?? 0) || (b.yards ?? 0) - (a.yards ?? 0))
-    );
-    return map;
   }
 
   function computeMvpScore(rec, wins) {
@@ -856,7 +721,6 @@
     const norm = normalizeTeamKey(cleaned);
     if (TEAM_CODE_MAP[cleaned]) return cleaned;
     if (TEAM_CODE_MAP[norm]) return norm;
-    if (STANDINGS_ALIASES[norm]) return STANDINGS_ALIASES[norm];
     return null;
   }
 
@@ -913,12 +777,6 @@
     return Number(value).toLocaleString();
   }
 
-  function formatSigned(value) {
-    if (value == null || Number.isNaN(value)) return "—";
-    const rounded = Number.isInteger(value) ? value : Number(value).toFixed(1);
-    return value > 0 ? `+${rounded}` : String(rounded);
-  }
-
   function parseNumber(val) {
     if (val == null) return null;
     const num = parseFloat(String(val).replace(/[^0-9.-]/g, ""));
@@ -935,79 +793,17 @@
       .toUpperCase();
   }
 
-  function playerAvatar(rec) {
-    const image = rec.image || state.rosterMap.get(rec.player)?.image || null;
-    const hasImage = Boolean(image);
-    const style = hasImage ? `style="background-image:url('${escapeHtml(image)}')"` : "";
-    const cls = hasImage ? "player__avatar player__avatar--photo" : "player__avatar";
-    const text = hasImage ? "" : escapeHtml(initials(rec.player));
-    return `<div class="${cls}" ${style}>${text}</div>`;
-  }
-
-  function escapeHtml(s) {
-    return String(s)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  function showError(msg) {
-    if (els.teamError) {
-      els.teamError.hidden = false;
-      els.teamError.textContent = msg;
-    }
-  }
-
-  function logoPath(file) {
-    return `logos/${file}`;
-  }
-
-  async function logoExists(file) {
-    if (state.logoExistCache.has(file)) return state.logoExistCache.get(file);
-
-    const url = logoPath(file);
-    const ok = await new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve(true);
-      img.onerror = () => resolve(false);
-      img.src = `${url}?cb=${Date.now()}`;
-    });
-
-    state.logoExistCache.set(file, ok);
-    return ok;
-  }
-
-  function variants(file) {
-    const base = file;
-    const lower = file.toLowerCase();
-    const upperFirst = file.length > 0 ? file[0].toUpperCase() + file.slice(1) : file;
-    const titleish = lower.replace(/(^|\/)([a-z])/g, (m, p1, p2) => p1 + p2.toUpperCase());
-    return Array.from(new Set([base, lower, upperFirst, titleish]));
-  }
-
-  async function setLogo(el, logoKey) {
+  function setPlayerAvatar(el, rec) {
     if (!el) return;
-    const key = (logoKey || "").toLowerCase().trim();
-    const mapped = LOGO_MAP[key];
-
-    if (!mapped) {
-      el.style.backgroundImage =
-        "linear-gradient(135deg, rgba(96,165,250,0.2), rgba(168,85,247,0.2))";
+    const image = rec?.image || state.rosterMap.get(rec?.player || "")?.image || null;
+    if (image) {
+      el.style.backgroundImage = `url('${escapeHtml(image)}')`;
+      el.textContent = "";
       return;
     }
 
-    for (const candidate of variants(mapped)) {
-      // eslint-disable-next-line no-await-in-loop
-      if (await logoExists(candidate)) {
-        el.style.backgroundImage = `url(${logoPath(candidate)})`;
-        return;
-      }
-    }
-
-    el.style.backgroundImage =
-      "linear-gradient(135deg, rgba(96,165,250,0.2), rgba(168,85,247,0.2))";
+    el.style.backgroundImage = "radial-gradient(circle, rgba(96, 165, 250, 0.12), rgba(168, 85, 247, 0.1))";
+    el.textContent = escapeHtml(initials(rec?.player || state.playerName || "P"));
   }
 
   function buildHardwareCard(award) {
@@ -1040,5 +836,21 @@
 
     card.appendChild(chips);
     return card;
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function showError(msg) {
+    if (els.playerError) {
+      els.playerError.hidden = false;
+      els.playerError.textContent = msg;
+    }
   }
 })();
