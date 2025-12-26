@@ -174,6 +174,9 @@
     const profileAway = buildTeamProfile(away.canonicalKey);
     const profileHome = buildTeamProfile(home.canonicalKey);
     const verdict = buildVerdict(profileAway, profileHome);
+    const probability = buildWinProbability(profileAway, profileHome);
+    const awayLogo = logoFile(away.logoKey);
+    const homeLogo = logoFile(home.logoKey);
 
     const frag = document.createDocumentFragment();
 
@@ -187,6 +190,34 @@
       <div class="compare-notes">${escapeHtml(verdict.reason)}</div>
     `;
     frag.appendChild(summary);
+
+    const predictor = document.createElement("div");
+    predictor.className = "compare-card predictor-card";
+    predictor.innerHTML = `
+      <div class="compare-card__title">Matchup predictor</div>
+      <div class="predictor">
+        <div class="predictor__ring" style="--pct-away:${(probability.awayPct * 100).toFixed(1)};--pct-home:${(probability.homePct * 100).toFixed(1)};">
+          <div class="predictor__ring-track"></div>
+          <div class="predictor__ring-fill"></div>
+          <div class="predictor__logos">
+            <div class="predictor__logo predictor__logo--left"${awayLogo ? ` style=\"background-image:url('logos/${awayLogo}')\"` : ""}></div>
+            <div class="predictor__logo predictor__logo--right"${homeLogo ? ` style=\"background-image:url('logos/${homeLogo}')\"` : ""}></div>
+          </div>
+        </div>
+        <div class="predictor__details">
+          <div class="predictor__row">
+            <div class="predictor__label">${escapeHtml(away.displayName)}</div>
+            <div class="predictor__value">${(probability.awayPct * 100).toFixed(1)}%</div>
+          </div>
+          <div class="predictor__row predictor__row--home">
+            <div class="predictor__label">${escapeHtml(home.displayName)}</div>
+            <div class="predictor__value">${(probability.homePct * 100).toFixed(1)}%</div>
+          </div>
+          <div class="predictor__note">${escapeHtml(probability.note)}</div>
+        </div>
+      </div>
+    `;
+    frag.appendChild(predictor);
 
     const stats = document.createElement("div");
     stats.className = "compare-card";
@@ -264,6 +295,7 @@
       totals: computeTeamTotals(players),
       winPct: standing?.winPct ?? null,
       window: buildGameWindowStats(teamKey, 3),
+      gamesPlayed: standing?.games ?? null,
     };
   }
 
@@ -307,6 +339,46 @@
     const leaderName = leader === "away" ? "Away team" : leader === "home" ? "Home team" : "Too close to call";
     const reason = leader === "tie" ? "Teams are neck and neck across win% and recent form." : "Edge based on win% and scoring margin.";
     return { leader, title: `${leaderName} edge`, reason };
+  }
+
+  function buildWinProbability(away, home) {
+    const awayStrength = teamStrength(away);
+    const homeStrength = teamStrength(home);
+    const diff = awayStrength - homeStrength;
+    const baseProbAway = 1 / (1 + Math.exp(-diff * 4));
+
+    const recencyCoverage = Math.min(((away.window.games || 0) + (home.window.games || 0)) / 6, 1);
+    const scheduleCoverage = Math.min(((away.gamesPlayed || 0) + (home.gamesPlayed || 0)) / 10, 1);
+    const shrink = 0.35 * (1 - (recencyCoverage * 0.6 + scheduleCoverage * 0.4));
+    const probAway = 0.5 + (baseProbAway - 0.5) * (1 - shrink);
+    const probHome = 1 - probAway;
+
+    const confidence = Math.abs(probAway - 0.5);
+    const tilt = probAway > 0.5 ? "Away lean" : probHome > 0.5 ? "Home lean" : "Dead even";
+    const confidenceLabel =
+      confidence > 0.2 ? "High confidence — recent form and win% create separation." :
+      confidence > 0.1 ? "Moderate confidence — small edge from form and offense." :
+      "Low confidence — limited data or too close to call.";
+
+    return {
+      awayPct: probAway,
+      homePct: probHome,
+      note: `${tilt}. ${confidenceLabel}`,
+    };
+  }
+
+  function teamStrength(profile) {
+    const winScore = profile.winPct != null ? profile.winPct : 0.5;
+    const margin = profile.window.avgMargin ?? 0;
+    const marginScore = 0.5 + Math.tanh(margin / 18) / 2;
+    const offenseScore = Math.min((profile.totals.offenseYards || 0) / 1800, 1);
+    const recencyWeight = Math.min((profile.window.games || 0) / 3, 1);
+    return (
+      winScore * 0.55 +
+      marginScore * 0.25 * recencyWeight +
+      offenseScore * 0.15 +
+      0.05
+    );
   }
 
   function formatStatus(game) {
@@ -806,6 +878,10 @@
     } else {
       el.style.background = "radial-gradient(circle, rgba(96,165,250,0.2), rgba(168,85,247,0.12))";
     }
+  }
+
+  function logoFile(key) {
+    return LOGO_MAP[key?.toLowerCase()] || LOGO_MAP[normalizeTeamKey(key)] || "";
   }
 
   function buildLogoMap() {
