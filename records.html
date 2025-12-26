@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="All-time records, Tate Bowl history, and awards for the Tate Football League." />
+  <title>TFL Records &amp; History</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="logos/TFLs.svg">
+  <script defer src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="legacy.js"></script>
+  <script defer src="records.js"></script>
+</head>
+<body>
+  <div class="page team-page">
+    <div class="team-page__header">
+      <a class="team-page__back" href="index.html">← Back to live dashboard</a>
+      <div class="brand">TFL Records Hub</div>
+    </div>
+
+    <section class="panel">
+      <div class="panel__header">
+        <div>
+          <div class="chart-card__title">Records &amp; Legacy</div>
+          <div class="chart-card__subtitle">Pulled directly from the All Time Stats workbook</div>
+        </div>
+        <div class="badge badge--ghost" id="recordsStatus">Loading…</div>
+      </div>
+
+      <div class="pill-row pill-row--wrap" id="recordsTabs">
+        <button class="pill pill--ghost pill--active" data-pane="records" type="button">All Time Records</button>
+        <button class="pill pill--ghost" data-pane="legacy" type="button">Legacy Leaderboard</button>
+        <button class="pill pill--ghost" data-pane="awards" type="button">Awards History</button>
+        <button class="pill pill--ghost" data-pane="tate" type="button">Tate Bowl History</button>
+      </div>
+
+      <div class="records-pane records-pane--active" data-pane="records">
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Stat</th>
+                <th>Record</th>
+                <th>Player</th>
+                <th>Season</th>
+              </tr>
+            </thead>
+            <tbody id="recordsTableBody"></tbody>
+          </table>
+        </div>
+        <div class="state state--empty" id="recordsEmpty" hidden>No records published yet.</div>
+      </div>
+
+      <div class="records-pane" data-pane="legacy">
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Player</th>
+                <th>Legacy</th>
+                <th>Highlights</th>
+              </tr>
+            </thead>
+            <tbody id="legacyTableBody"></tbody>
+          </table>
+        </div>
+        <div class="state state--empty" id="legacyEmpty" hidden>Legacy scores will appear once awards and stats load.</div>
+      </div>
+
+      <div class="records-pane" data-pane="awards">
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>MVPs</th>
+                <th>OPOYs</th>
+                <th>DPOYs</th>
+                <th>Total Awards</th>
+              </tr>
+            </thead>
+            <tbody id="awardsTableBody"></tbody>
+          </table>
+        </div>
+        <div class="state state--empty" id="awardsEmpty" hidden>No awards history found.</div>
+      </div>
+
+      <div class="records-pane" data-pane="tate">
+        <div class="table-container">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>Tate Bowl</th>
+                <th>Team</th>
+              </tr>
+            </thead>
+            <tbody id="tateTableBody"></tbody>
+          </table>
+        </div>
+        <div class="state state--empty" id="tateEmpty" hidden>No Tate Bowl history published.</div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

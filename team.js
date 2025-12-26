@@ -60,6 +60,8 @@
     playersByTeam: new Map(),
     scheduleGames: [],
     logoExistCache: new Map(),
+    legacyMap: new Map(),
+    legacyPromise: null,
   };
 
   const els = {};
@@ -119,13 +121,54 @@
     return text;
   }
 
+  async function ensureLegacyData() {
+    if (!window.Legacy?.loadLegacyData) return null;
+    if (state.legacyMap?.size) return state.legacyMap;
+    if (!state.legacyPromise) {
+      state.legacyPromise = window.Legacy.loadLegacyData().then((data) => {
+        state.legacyMap = data.legacyMap || new Map();
+        state.legacyPromise = null;
+        return state.legacyMap;
+      }).catch((err) => {
+        console.error("[legacy]", err);
+        state.legacyPromise = null;
+        return null;
+      });
+    }
+    return state.legacyPromise;
+  }
+
+  function lookupLegacy(name) {
+    if (!state.legacyMap?.size) return null;
+    const key = normalizePlayerKey(name);
+    if (!key) return null;
+    return state.legacyMap.get(key) || null;
+  }
+
+  function annotateLegacy(records) {
+    if (!records?.length) return records;
+    return records.map((rec) => {
+      const legacy = lookupLegacy(rec.player);
+      if (!legacy) return rec;
+      return {
+        ...rec,
+        legacyScore: Math.round(legacy.score ?? 0),
+        legacyTier: legacy.tier,
+        legacyTierKey: legacy.tierKey,
+        legacyHighlights: legacy.highlights || [],
+      };
+    });
+  }
+
   async function fetchMvp() {
     const buffer = await fetchArrayBuffer(MVP_CSV_URL);
     const { mvpRecords, standings, roster } = parseMvpWorkbook(buffer);
+    await ensureLegacyData();
+    const enriched = annotateLegacy(mvpRecords);
     state.rosterMap = roster;
     state.standings = standings;
     state.standingsLookup = buildStandingsLookup(standings);
-    state.playersByTeam = buildPlayersByTeam(mvpRecords);
+    state.playersByTeam = buildPlayersByTeam(enriched);
   }
 
   async function fetchSchedule() {
@@ -216,6 +259,8 @@
         .join(" • ");
       const playerKey = encodeURIComponent(player.player || "");
       const teamParam = encodeURIComponent(state.teamKey || "");
+      const legacyDisplay = player.legacyScore != null ? formatScore(player.legacyScore) : null;
+      const legacyBadge = buildLegacyBadge(player);
       card.innerHTML = `
         <div class="team-roster__header">
           ${playerAvatar(player)}
@@ -227,7 +272,10 @@
             <div class="team-roster__meta">${standing ? formatRecord(standing) : "Record —"}</div>
             ${playerBadges(player)}
           </div>
-          <div class="team-roster__badge">${formatScore(player.mvpScore)}</div>
+          <div class="team-roster__badge">
+            ${legacyDisplay ? `Legacy ${legacyDisplay}` : `MVP ${formatScore(player.mvpScore)}`}
+            ${legacyBadge ? `<div class="team-roster__badge-meta">${legacyBadge}</div>` : ""}
+          </div>
         </div>
         <div class="team-roster__statline">${statLines || "No stat line yet"}</div>
       `;
@@ -359,9 +407,12 @@
   }
 
   function playerBadges(player) {
+    const badges = [];
+    const legacyBadge = buildLegacyBadge(player);
+    if (legacyBadge) badges.push(legacyBadge);
+
     const awards = window.listHardwareForPlayer?.(player.player) || [];
-    if (!awards.length) return "";
-    const badges = awards
+    const hardwareBadges = awards
       .filter((award) => award.recipients && award.recipients.length)
       .map(
         (award) => `
@@ -369,10 +420,24 @@
         <div class="player-badge__icon" style="background-image:url('${escapeHtml(award.image)}')"></div>
         <span>${escapeHtml(award.name)}</span>
       </div>`
-      )
-      .join("");
-    if (!badges) return "";
-    return `<div class="team-roster__badges">${badges}</div>`;
+      );
+
+    badges.push(...hardwareBadges);
+    if (!badges.length) return "";
+    return `<div class="team-roster__badges">${badges.join("")}</div>`;
+  }
+
+  function buildLegacyBadge(player) {
+    const legacy = lookupLegacy(player.player);
+    if (!legacy) return "";
+    const title = legacy.highlights?.length ? legacy.highlights.join(" • ") : "Legacy impact";
+    const score = Math.round(legacy.score ?? 0);
+    return `
+      <div class="legacy-chip legacy-chip--${escapeHtml(legacy.tierKey || "prospect")}" title="${escapeHtml(title)}">
+        <span class="legacy-chip__tier">${escapeHtml(legacy.tier || "Legacy")}</span>
+        <span class="legacy-chip__score">${score}</span>
+      </div>
+    `;
   }
 
   function buildResult(game, isHome) {
@@ -935,6 +1000,12 @@
   }
 
   function normalizeTeamKey(name) {
+    return String(name || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  function normalizePlayerKey(name) {
     return String(name || "")
       .trim()
       .toLowerCase();
