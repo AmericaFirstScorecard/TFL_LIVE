@@ -3672,14 +3672,32 @@
   function findTeamColumns(columns) {
     const seen = new Set();
     const matches = [];
-    columns
-      .map((col) => ({ col, key: canonicalTeamKey(col) }))
-      .filter((entry) => entry.key)
-      .forEach((entry) => {
-        if (seen.has(entry.key)) return;
-        matches.push(entry.col);
-        seen.add(entry.key);
-      });
+    columns.forEach((colRaw) => {
+      const col = String(colRaw || "");
+      const trimmed = col.trim();
+      if (!trimmed) return;
+
+      const normalized = normalizeTeamKey(trimmed);
+      const canonical = canonicalTeamKey(trimmed);
+      const numeric = Number(trimmed);
+      const numericKey = Number.isFinite(numeric) ? String(Math.trunc(numeric)) : null;
+
+      const looksLikeTeamHeader =
+        /team\s*a\b/i.test(trimmed) ||
+        /team\s*b\b/i.test(trimmed) ||
+        /^away\b/i.test(trimmed) ||
+        /^home\b/i.test(trimmed) ||
+        /^visitor\b/i.test(trimmed) ||
+        (numericKey && TEAM_CODE_MAP[numericKey]) ||
+        TEAM_CODE_MAP[normalized] ||
+        TEAM_CODE_MAP[canonical];
+
+      if (!looksLikeTeamHeader) return;
+      const dedupeKey = canonical || normalized;
+      if (seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+      matches.push(trimmed);
+    });
     return matches;
   }
 
