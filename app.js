@@ -942,7 +942,7 @@
       const detailBtn = document.createElement("button");
       detailBtn.type = "button";
       detailBtn.className = "pill schedule-game__detail";
-      detailBtn.textContent = "Details";
+      detailBtn.textContent = "DETAILS";
       detailBtn.addEventListener("click", () => openGameDetail(gameCode, game));
       center.appendChild(detailBtn);
     }
@@ -1380,8 +1380,57 @@
     const teamAName = resolveTeam(teamAKey).displayName;
     const teamBName = resolveTeam(teamBKey).displayName;
 
-    const snapshotRows = rows.slice(1);
-    if (!snapshotRows.length) snapshotRows.push(rows[0]);
+    const hasMeaningfulRow = (row) => {
+      if (!row) return false;
+      const r = norm(row);
+      const nonEmpty = (val) => val != null && String(val).trim() !== "";
+      const probVal = pick(r, ["team a win probability", "away win probability", "team a win prob"]);
+      const minuteVal = pick(r, ["minutes left", "minutes_left", "ml"]);
+      const quarterVal = pick(r, ["quarter", "qtr"]);
+      const downVal = pick(r, ["down"]);
+      const distanceVal = pick(r, ["distance", "dist"]);
+      const ytgVal = pick(r, ["yards to goal", "ytg"]);
+      const pregameVal = pick(r, ["pregame", "baseline", "pregame win prob"]);
+      const hasPossessionVal = pick(r, ["team a has ball (1=yes, 0=no)", "team a has ball"]);
+      const statKeys = [
+        "team a total yards",
+        "team b total yards",
+        "team a yards",
+        "team b yards",
+        "total yards a",
+        "total yards b",
+        "team a first downs",
+        "team b first downs",
+        "team a 3rd made",
+        "team a 3rd att",
+        "team b 3rd made",
+        "team b 3rd att",
+        "team a 4th made",
+        "team a 4th att",
+        "team b 4th made",
+        "team b 4th att",
+        "team a turnovers",
+        "team b turnovers",
+        "penalties a",
+        "penalties b",
+      ];
+
+      const hasStatsInput = statKeys.some((key) => nonEmpty(r[key]));
+      const hasScoreInput =
+        nonEmpty(pick(r, ["team a score", "team a point", "team a points"])) ||
+        nonEmpty(pick(r, ["team b score", "team b point", "team b points"])) ||
+        nonEmpty(row[teamAKey]) ||
+        nonEmpty(row[teamBKey]);
+
+      return (
+        hasStatsInput ||
+        hasScoreInput ||
+        [probVal, minuteVal, quarterVal, downVal, distanceVal, ytgVal, pregameVal, hasPossessionVal].some(nonEmpty)
+      );
+    };
+
+    const snapshotRows = rows.slice(1).filter(hasMeaningfulRow);
+    if (!snapshotRows.length && hasMeaningfulRow(rows[0])) snapshotRows.push(rows[0]);
 
     let rollingScoreA = 0;
     let rollingScoreB = 0;

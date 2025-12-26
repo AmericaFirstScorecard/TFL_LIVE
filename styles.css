@@ -1077,11 +1077,22 @@ body {
   letter-spacing: 0.2px;
 }
 
+.schedule-game__pills {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .schedule-game__detail {
   cursor: pointer;
   border-color: rgba(96, 165, 250, 0.4);
   background: linear-gradient(135deg, rgba(96, 165, 250, 0.18), rgba(168, 85, 247, 0.12));
   color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-left: 6px;
 }
 
 .schedule-game__score {
