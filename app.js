@@ -108,6 +108,7 @@
     lastStandings: [],
     newsRecords: [],
     rosterMap: new Map(),
+    rosterLookup: new Map(),
     playersByTeam: new Map(),
     standingsLookup: new Map(),
     lastMatchup: null,
@@ -131,6 +132,8 @@
     legacyMap: new Map(),
     legacyLeaderboard: [],
     legacyPromise: null,
+    playerLookupIndex: [],
+    playerLookupHints: [],
   };
 
   const els = {};
@@ -151,6 +154,7 @@
     initDetailOverlay();
     initGameDetailOverlay();
     initPlayerOverlay();
+    initPlayerLookup();
 
     // Debug: proves what your deployed JS is using
     console.info("[TFL] MATCHUP_WORKBOOK_URL =", MATCHUP_WORKBOOK_URL);
@@ -200,7 +204,7 @@
       if (!legacy) return rec;
       return {
         ...rec,
-        legacyScore: Math.round(legacy.score ?? 0),
+        legacyScore: legacy.roundedScore ?? Math.round(legacy.score ?? 0),
         legacyTier: legacy.tier,
         legacyTierKey: legacy.tierKey,
         legacyHighlights: legacy.highlights || [],
@@ -262,6 +266,10 @@
     els.mvpEmpty = id("mvpEmpty");
     els.mvpTableBody = id("mvpTableBody");
     els.mvpStatus = id("mvpStatus");
+    els.playerLookupInput = id("playerLookupInput");
+    els.playerLookupResults = id("playerLookupResults");
+    els.playerLookupHints = id("playerLookupHints");
+    els.playerLookupClear = id("playerLookupClear");
 
     els.standingsLoading = id("standingsLoading");
     els.standingsError = id("standingsError");
@@ -516,6 +524,176 @@
     });
   }
 
+  function initPlayerLookup() {
+    if (els.playerLookupInput) {
+      els.playerLookupInput.addEventListener("input", () => renderPlayerLookup());
+      els.playerLookupInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          const top = firstLookupMatch();
+          if (top) window.location.href = playerPageUrl(top.name, top.team);
+        }
+      });
+    }
+    if (els.playerLookupClear) {
+      els.playerLookupClear.addEventListener("click", () => {
+        if (els.playerLookupInput) els.playerLookupInput.value = "";
+        renderPlayerLookup();
+      });
+    }
+    renderLookupHints();
+    renderPlayerLookup();
+  }
+
+  function refreshPlayerLookupIndex() {
+    const index = new Map();
+
+    const add = (name, data = {}) => {
+      const key = normalizePlayerKey(name);
+      if (!key) return;
+      const roster = lookupRosterInfo(name);
+      const legacy = lookupLegacy(name);
+      const existing = index.get(key) || {};
+      index.set(key, {
+        name: existing.name || name,
+        active: existing.active || data.active || false,
+        team: existing.team || data.team || roster?.team || "",
+        image: existing.image || data.image || roster?.image || null,
+        mvpScore: existing.mvpScore ?? data.mvpScore ?? null,
+        winPct: existing.winPct ?? data.winPct ?? null,
+        legacyTier: existing.legacyTier || data.legacyTier || legacy?.tier || "",
+        legacyScore:
+          existing.legacyScore ??
+          data.legacyScore ??
+          (legacy ? legacy.roundedScore ?? Math.round(legacy.score ?? 0) : null),
+        legacyHighlights: existing.legacyHighlights || data.legacyHighlights || legacy?.highlights || [],
+      });
+    };
+
+    (state.legacyLeaderboard || []).forEach((row) =>
+      add(row.name, {
+        legacyTier: row.tier,
+        legacyScore: row.roundedScore ?? Math.round(row.score ?? 0),
+        legacyHighlights: row.highlights,
+      })
+    );
+
+    (state.lastMvpRecords || []).forEach((rec) =>
+      add(rec.player, {
+        active: true,
+        team: rec.team,
+        image: rec.image,
+        mvpScore: rec.mvpScore,
+        winPct: rec.winPct,
+      })
+    );
+
+    state.playerLookupIndex = Array.from(index.values()).sort((a, b) =>
+      (a.name || "").localeCompare(b.name || "")
+    );
+    state.playerLookupHints = buildLookupHints(state.legacyLeaderboard);
+    renderLookupHints();
+    renderPlayerLookup();
+  }
+
+  function buildLookupHints(leaderboard) {
+    return (leaderboard || []).slice(0, 4).map((row) => row.name);
+  }
+
+  function firstLookupMatch() {
+    const matches = buildLookupMatches(els.playerLookupInput?.value || "");
+    return matches[0] || null;
+  }
+
+  function buildLookupMatches(query) {
+    const clean = String(query || "").trim().toLowerCase();
+    const pool = state.playerLookupIndex || [];
+    if (!pool.length) return [];
+    if (!clean) return pool.slice(0, 6);
+    return pool.filter((entry) => entry.name.toLowerCase().includes(clean)).slice(0, 10);
+  }
+
+  function renderLookupHints() {
+    if (!els.playerLookupHints) return;
+    const hints = state.playerLookupHints || [];
+    const frag = document.createDocumentFragment();
+
+    const helper = document.createElement("div");
+    helper.className = "lookup__hint";
+    helper.textContent = "Tip: search by first or last name. Inactive players are marked for you.";
+    frag.appendChild(helper);
+
+    hints.forEach((name) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pill pill--ghost lookup__hint-pill";
+      btn.textContent = name;
+      btn.addEventListener("click", () => {
+        if (els.playerLookupInput) {
+          els.playerLookupInput.value = name;
+          els.playerLookupInput.focus();
+          renderPlayerLookup();
+        }
+      });
+      frag.appendChild(btn);
+    });
+
+    els.playerLookupHints.innerHTML = "";
+    els.playerLookupHints.appendChild(frag);
+  }
+
+  function renderPlayerLookup() {
+    if (!els.playerLookupResults) return;
+    const query = els.playerLookupInput?.value || "";
+    const matches = buildLookupMatches(query);
+    els.playerLookupResults.innerHTML = "";
+
+    if (!state.playerLookupIndex.length) {
+      els.playerLookupResults.innerHTML =
+        '<div class="state state--muted">Player directory will load once the sheets finish loading.</div>';
+      return;
+    }
+
+    if (!matches.length) {
+      els.playerLookupResults.innerHTML =
+        '<div class="state state--empty">No players found. Try another spelling or a last name.</div>';
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    matches.forEach((match) => {
+      const card = document.createElement("div");
+      card.className = "lookup-result";
+      const status = match.active ? "Active" : "Inactive";
+      const statusClass = match.active ? "lookup-result__status--active" : "lookup-result__status--inactive";
+      const legacyParts = [];
+      if (match.legacyTier) legacyParts.push(escapeHtml(match.legacyTier));
+      if (match.legacyScore != null) legacyParts.push(formatCount(match.legacyScore));
+      if (match.legacyHighlights?.length) legacyParts.push(escapeHtml(match.legacyHighlights.join(" • ")));
+      const legacyLine = legacyParts.length ? legacyParts.join(" • ") : "Legacy profile ready";
+      card.innerHTML = `
+        ${playerAvatar({ player: match.name, image: match.image })}
+        <div class="lookup-result__body">
+          <div class="lookup-result__header">
+            <div class="lookup-result__name">${escapeHtml(match.name)}</div>
+            <div class="lookup-result__status ${statusClass}">${status}</div>
+          </div>
+          <div class="lookup-result__meta">${escapeHtml(match.team || "No active team")}</div>
+          <div class="lookup-result__meta">MVP ${formatScore(match.mvpScore)} • Win% ${formatPct(match.winPct)}</div>
+          <div class="lookup-result__meta lookup-result__meta--muted">${legacyLine}</div>
+        </div>
+        <div class="lookup-result__actions">
+          <a class="pill pill--accent lookup-result__link" href="${playerPageUrl(match.name, match.team)}">Open profile</a>
+        </div>
+      `;
+      card.addEventListener("click", () => {
+        window.location.href = playerPageUrl(match.name, match.team);
+      });
+      frag.appendChild(card);
+    });
+
+    els.playerLookupResults.appendChild(frag);
+  }
+
   // =======================
   // NETWORK
   // =======================
@@ -647,6 +825,7 @@
       const sortedStandings = sortStandings(standings);
       state.lastStandings = sortedStandings;
       state.rosterMap = roster;
+      state.rosterLookup = buildRosterLookup(roster);
       state.playersByTeam = buildPlayersByTeam(enrichedRecords);
       state.standingsLookup = buildStandingsLookup(sortedStandings);
       renderMvp(enrichedRecords);
@@ -654,6 +833,7 @@
       renderBracket(sortedStandings);
       state.newsRecords = news;
       renderNews(news);
+      refreshPlayerLookupIndex();
       if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
       setLoading(els.mvpLoading, false);
       setLoading(els.standingsLoading, false);
@@ -670,6 +850,7 @@
         const sampleStandings = sortStandings(buildSampleStandings());
         state.lastStandings = sampleStandings;
         state.rosterMap = new Map();
+        state.rosterLookup = new Map();
         state.playersByTeam = buildPlayersByTeam(state.lastMvpRecords);
         state.standingsLookup = buildStandingsLookup(sampleStandings);
         renderMvp(state.lastMvpRecords);
@@ -677,6 +858,7 @@
         renderBracket(sampleStandings);
         state.newsRecords = buildSampleNews();
         renderNews(state.newsRecords);
+        refreshPlayerLookupIndex();
         if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
         setLoading(els.mvpLoading, false);
         setLoading(els.standingsLoading, false);
@@ -1869,6 +2051,16 @@
     return map;
   }
 
+  function buildRosterLookup(map) {
+    const lookup = new Map();
+    (map || new Map()).forEach((info, name) => {
+      const key = normalizePlayerKey(name);
+      if (!key) return;
+      lookup.set(key, { ...info, name });
+    });
+    return lookup;
+  }
+
   function parseStandingsSheet(workbook) {
     const sheetName =
       workbook.SheetNames.find((n) => n.toLowerCase().includes("standing")) || workbook.SheetNames[0];
@@ -2112,13 +2304,6 @@
       { label: "Def INT", value: formatCount(player.defInt) },
       { label: "Def TD", value: formatCount(player.defTd) },
       { label: "Def score", value: formatScore(player.defScore) },
-      {
-        label: "Legacy",
-        value:
-          player.legacyScore != null
-            ? `${Math.round(player.legacyScore)}${player.legacyTier ? ` (${player.legacyTier})` : ""}`
-            : "—",
-      },
       { label: "Wins", value: formatCount(player.wins) },
       { label: "Win%", value: formatPct(player.winPct) },
       { label: "MVP Score", value: formatScore(player.mvpScore) },
@@ -2169,7 +2354,6 @@
           ? `${row.passTd ?? 0}/${row.interceptions ?? 0}`
           : "—";
       const passRating = row.passRating != null ? formatScore(row.passRating) : "—";
-      const legacyBadge = buildLegacyBadge(row);
       const statLines = buildPlayerStatLines(row);
       const statLinesHtml = (statLines.length ? statLines : [{ label: "Stats", value: "—" }])
         .map(
@@ -2187,10 +2371,7 @@
             ${playerAvatar(row)}
             <div>
               <div class="player__name" data-player-link></div>
-              <div class="details">
-                MVP Score: ${formatScore(row.mvpScore)}
-                ${row.legacyScore != null ? ` • Legacy: ${Math.round(row.legacyScore)}` : ""}
-              </div>
+              <div class="details">MVP Score: ${formatScore(row.mvpScore)} • Win%: ${formatPct(row.winPct)}</div>
             </div>
           </div>
         </td>
@@ -2202,7 +2383,6 @@
         </td>
         <td>${formatPct(row.winPct)}</td>
         <td>${formatScore(row.mvpScore)}</td>
-        <td>${legacyBadge || "—"}</td>
         <td>${passRating}</td>
         <td>${row.yards != null ? Number(row.yards).toLocaleString() : "—"}</td>
         <td>${tdInt}</td>
@@ -2442,7 +2622,6 @@
     const standing = findTeamRecord(teamInfo.displayName, player.team);
 
     const metrics = buildPlayerMetrics(player);
-    const legacyBadge = buildLegacyBadge(player);
 
     const modal = document.createElement("div");
     modal.className = "player-modal";
@@ -2459,7 +2638,6 @@
         </div>
         <div class="player-modal__badge-group">
           <div class="player-modal__badge">${formatScore(player.mvpScore)} MVP</div>
-          ${legacyBadge ? `<div class="player-modal__badge player-modal__badge--legacy">${legacyBadge}</div>` : ""}
         </div>
       </div>
       <div class="player-modal__grid">
@@ -2693,6 +2871,13 @@
     badge.className = "bracket-card__badge";
     badge.textContent = finalMatch?.title || "Tate Bowl";
     card.appendChild(badge);
+
+    const hero = document.createElement("div");
+    hero.className = "bracket-card__hero";
+    const heroImg = document.createElement("div");
+    heroImg.className = "bracket-card__hero-img bracket-card__hero-img--tate";
+    hero.appendChild(heroImg);
+    card.appendChild(hero);
 
     const slots = document.createElement("div");
     slots.className = "bracket-card__slots bracket-card__slots--final";
@@ -3553,7 +3738,8 @@
   }
 
   function playerAvatar(rec) {
-    const image = rec.image || state.rosterMap.get(rec.player)?.image || null;
+    const roster = lookupRosterInfo(rec.player);
+    const image = rec.image || roster?.image || null;
     const hasImage = Boolean(image);
     const style = hasImage ? `style="background-image:url('${escapeHtml(image)}')"` : "";
     const cls = hasImage ? "player__avatar player__avatar--photo" : "player__avatar";
@@ -3565,7 +3751,7 @@
     const legacy = lookupLegacy(player.player);
     if (!legacy) return "";
     const title = legacy.highlights?.length ? legacy.highlights.join(" • ") : "Legacy impact";
-    const score = Math.round(legacy.score ?? 0);
+    const score = legacy.roundedScore ?? Math.round(legacy.score ?? 0);
     return `
       <div class="legacy-chip legacy-chip--${escapeHtml(legacy.tierKey || "prospect")}" title="${escapeHtml(title)}">
         <span class="legacy-chip__tier">${escapeHtml(legacy.tier || "Legacy")}</span>
@@ -3674,9 +3860,19 @@
     return team.logoKey || team.canonicalKey || team.displayName;
   }
 
+  function lookupRosterInfo(name) {
+    const key = normalizePlayerKey(name);
+    if (!key) return null;
+    if (state.rosterLookup?.has(key)) return state.rosterLookup.get(key);
+    for (const [raw, info] of state.rosterMap.entries()) {
+      if (normalizePlayerKey(raw) === key) return { ...info, name: raw };
+    }
+    return null;
+  }
+
   function playerPageUrl(playerName, teamKey) {
     const encodedName = encodeURIComponent(playerName || "");
-    const rosterTeam = state.rosterMap.get(playerName || "")?.team;
+    const rosterTeam = lookupRosterInfo(playerName || "")?.team;
     const team =
       canonicalTeamKey(teamKey || rosterTeam) ||
       normalizeTeamKey(teamKey || rosterTeam);

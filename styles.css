@@ -193,6 +193,16 @@ body {
   color: var(--muted);
 }
 
+.badge--accent {
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(168, 85, 247, 0.18));
+  border-color: rgba(96, 165, 250, 0.4);
+}
+
+.badge--warning {
+  background: rgba(251, 191, 36, 0.16);
+  border-color: rgba(251, 191, 36, 0.32);
+}
+
 .pill-row {
   display: flex;
   gap: 8px;
@@ -946,6 +956,133 @@ body {
   background: rgba(96, 165, 250, 0.06);
 }
 
+.lookup-panel {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  margin-bottom: 16px;
+}
+
+.lookup-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.lookup-panel__controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.lookup-panel__controls input[type="search"] {
+  flex: 1;
+  min-width: 220px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+
+.lookup-panel__hints {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.lookup__hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.lookup__hint-pill {
+  font-size: 12px;
+}
+
+.lookup-panel__results {
+  display: grid;
+  gap: 10px;
+}
+
+.lookup-result {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.lookup-result:hover {
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(96, 165, 250, 0.04);
+}
+
+.lookup-result__body {
+  display: grid;
+  gap: 4px;
+}
+
+.lookup-result__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lookup-result__name {
+  font-weight: 700;
+}
+
+.lookup-result__status {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+}
+
+.lookup-result__status--active {
+  background: rgba(52, 211, 153, 0.16);
+  border-color: rgba(52, 211, 153, 0.32);
+}
+
+.lookup-result__status--inactive {
+  background: rgba(248, 113, 113, 0.16);
+  border-color: rgba(248, 113, 113, 0.32);
+}
+
+.lookup-result__meta {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.lookup-result__meta--muted {
+  color: var(--muted);
+}
+
+.lookup-result__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.lookup-result__link {
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .table .player {
   display: flex;
   align-items: center;
@@ -1382,9 +1519,7 @@ body {
 }
 
 .schedule-game__detail--details {
-  text-decoration: underline;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 2px;
+  text-decoration: none;
 }
 
 .schedule-game__score {
@@ -1717,6 +1852,10 @@ body {
   position: relative;
   z-index: 1;
   border-radius: 10px;
+}
+
+.bracket-card__hero-img--tate {
+  background-image: url("logos/szn10bowl.png");
 }
 
 .bracket-slot {

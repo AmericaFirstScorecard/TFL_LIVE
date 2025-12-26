@@ -196,9 +196,10 @@
       if (rec.tateBowls.length) highlights.push(`${rec.tateBowls.length} Tate Bowl ring${rec.tateBowls.length > 1 ? "s" : ""}`);
       if (rec.statScore) highlights.push(`Stat score ${rec.statScore}`);
       rec.highlights = highlights;
+      rec.roundedScore = Math.round(rec.score || 0);
       rec.tier = legacyTier(rec.score);
       rec.tierKey = (rec.tier || "").toLowerCase().replace(/\s+/g, "-") || "rising";
-      rec.label = `${rec.tier} (${Math.round(rec.score)})`;
+      rec.label = `${rec.tier} (${rec.roundedScore})`;
     });
 
     const leaderboard = Array.from(legacyMap.values()).sort((a, b) => (b.score || 0) - (a.score || 0));

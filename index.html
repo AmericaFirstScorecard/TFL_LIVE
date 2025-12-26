@@ -191,6 +191,21 @@
             <div class="badge badge--ghost" id="mvpStatus">Loading…</div>
           </div>
 
+          <div class="lookup-panel">
+            <div class="lookup-panel__header">
+              <div class="chart-card__title">Player lookup</div>
+              <div class="chart-card__subtitle">Find active and legacy players. Inactive profiles are flagged.</div>
+            </div>
+            <div class="lookup-panel__controls">
+              <input type="search" id="playerLookupInput" placeholder="Search by name or nickname…" aria-label="Player lookup" />
+              <button class="pill pill--ghost" id="playerLookupClear" type="button">Clear</button>
+            </div>
+            <div class="lookup-panel__hints" id="playerLookupHints"></div>
+            <div class="lookup-panel__results" id="playerLookupResults">
+              <div class="state state--muted">Start typing to find any player, even inactive ones.</div>
+            </div>
+          </div>
+
           <div class="table-container">
             <table class="table" id="mvpTable">
               <thead>
@@ -199,7 +214,6 @@
                   <th data-sort="team">Team</th>
                   <th data-sort="winPct">Win%</th>
                   <th data-sort="mvpScore">MVP Score</th>
-                  <th data-sort="legacyScore">Legacy</th>
                   <th data-sort="passRating">Pass Rating</th>
                   <th data-sort="yards">Pass Yards</th>
                   <th data-sort="passTd">TD / INT</th>

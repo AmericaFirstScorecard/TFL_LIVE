@@ -152,7 +152,7 @@
       if (!legacy) return rec;
       return {
         ...rec,
-        legacyScore: Math.round(legacy.score ?? 0),
+        legacyScore: legacy.roundedScore ?? Math.round(legacy.score ?? 0),
         legacyTier: legacy.tier,
         legacyTierKey: legacy.tierKey,
         legacyHighlights: legacy.highlights || [],
@@ -269,7 +269,6 @@
               <div class="team-roster__name">${escapeHtml(player.player)}</div>
             </a>
             <div class="team-roster__meta">MVP ${formatScore(player.mvpScore)} • Win% ${formatPct(player.winPct)}</div>
-            <div class="team-roster__meta">${standing ? formatRecord(standing) : "Record —"}</div>
             ${playerBadges(player)}
           </div>
           <div class="team-roster__badge">
@@ -431,7 +430,7 @@
     const legacy = lookupLegacy(player.player);
     if (!legacy) return "";
     const title = legacy.highlights?.length ? legacy.highlights.join(" • ") : "Legacy impact";
-    const score = Math.round(legacy.score ?? 0);
+    const score = legacy.roundedScore ?? Math.round(legacy.score ?? 0);
     return `
       <div class="legacy-chip legacy-chip--${escapeHtml(legacy.tierKey || "prospect")}" title="${escapeHtml(title)}">
         <span class="legacy-chip__tier">${escapeHtml(legacy.tier || "Legacy")}</span>
