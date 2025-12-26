@@ -959,13 +959,11 @@ body {
 }
 
 .predictor__lead {
-  font-size: 28px;
-  font-weight: 800;
+  display: none;
 }
 
 .predictor__lead-label {
-  color: var(--muted);
-  font-size: 13px;
+  display: none;
 }
 
 .predictor__logo--left {
