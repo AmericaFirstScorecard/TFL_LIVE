@@ -191,21 +191,6 @@
             <div class="badge badge--ghost" id="mvpStatus">Loading…</div>
           </div>
 
-          <div class="lookup-panel">
-            <div class="lookup-panel__header">
-              <div class="chart-card__title">Player lookup</div>
-              <div class="chart-card__subtitle">Find active and legacy players. Inactive profiles are flagged.</div>
-            </div>
-            <div class="lookup-panel__controls">
-              <input type="search" id="playerLookupInput" placeholder="Search by name or nickname…" aria-label="Player lookup" />
-              <button class="pill pill--ghost" id="playerLookupClear" type="button">Clear</button>
-            </div>
-            <div class="lookup-panel__hints" id="playerLookupHints"></div>
-            <div class="lookup-panel__results" id="playerLookupResults">
-              <div class="state state--muted">Start typing to find any player, even inactive ones.</div>
-            </div>
-          </div>
-
           <div class="table-container">
             <table class="table" id="mvpTable">
               <thead>
@@ -226,6 +211,21 @@
             <div class="state state--loading" id="mvpLoading">Loading MVP feed…</div>
             <div class="state state--error" id="mvpError" hidden>Unable to load MVP feed. Retrying…</div>
             <div class="state state--empty" id="mvpEmpty" hidden>No MVP odds available.</div>
+          </div>
+
+          <div class="lookup-panel">
+            <div class="lookup-panel__header">
+              <div class="chart-card__title">Player lookup</div>
+              <div class="chart-card__subtitle">Find active and legacy players. Inactive profiles are flagged.</div>
+            </div>
+            <div class="lookup-panel__controls">
+              <input type="search" id="playerLookupInput" placeholder="Search by name or nickname…" aria-label="Player lookup" />
+              <button class="pill pill--ghost" id="playerLookupClear" type="button">Clear</button>
+            </div>
+            <div class="lookup-panel__hints" id="playerLookupHints"></div>
+            <div class="lookup-panel__results" id="playerLookupResults">
+              <div class="state state--muted">Start typing to find any player, even inactive ones.</div>
+            </div>
           </div>
         </div>
       </section>

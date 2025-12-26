@@ -407,8 +407,6 @@
 
   function playerBadges(player) {
     const badges = [];
-    const legacyBadge = buildLegacyBadge(player);
-    if (legacyBadge) badges.push(legacyBadge);
 
     const awards = window.listHardwareForPlayer?.(player.player) || [];
     const hardwareBadges = awards
@@ -709,7 +707,9 @@
       })
       .filter((r) => r.player);
 
-    return { mvpRecords: records, standings: sortedStandings, roster };
+    const rosterWithProfiles = mergeRosterWithRecords(roster, records);
+
+    return { mvpRecords: records, standings: sortedStandings, roster: rosterWithProfiles };
   }
 
   function parsePassingSheet(workbook) {
@@ -807,6 +807,19 @@
     return map;
   }
 
+  function mergeRosterWithRecords(roster, records) {
+    const merged = new Map(roster || new Map());
+    (records || []).forEach((rec) => {
+      const name = rec?.player;
+      if (!name) return;
+      const existing = merged.get(name) || {};
+      const team = existing.team || rec.team || "";
+      const image = existing.image ?? null;
+      merged.set(name, { team, image });
+    });
+    return merged;
+  }
+
   function parseStandingsSheet(workbook) {
     const sheetName =
       workbook.SheetNames.find((n) => n.toLowerCase().includes("standing")) || workbook.SheetNames[0];
@@ -850,9 +863,12 @@
   function buildStandingsLookup(rows) {
     const map = new Map();
     rows.forEach((row) => {
-      const key = normalizeTeamKey(row.team);
-      if (!key) return;
-      map.set(key, row);
+      const norm = normalizeTeamKey(row.team);
+      const canonical = canonicalTeamKey(row.team);
+      [norm, canonical].forEach((key) => {
+        if (!key) return;
+        map.set(key, row);
+      });
     });
     return map;
   }
@@ -981,6 +997,14 @@
     return str.startsWith("#") ? str : `#${str}`;
   }
 
+  function primaryTeamKey(key) {
+    const info = TEAM_CODE_MAP[key];
+    if (info?.logo || info?.name) {
+      return normalizeTeamKey(info.logo || info.name);
+    }
+    return normalizeTeamKey(key);
+  }
+
   function canonicalTeamKey(raw) {
     const cleaned = String(raw ?? "").trim();
     if (!cleaned) return null;
@@ -988,14 +1012,14 @@
     const asNumber = Number(cleaned);
     if (!Number.isNaN(asNumber)) {
       const intKey = String(Math.trunc(asNumber));
-      if (TEAM_CODE_MAP[intKey]) return intKey;
+      if (TEAM_CODE_MAP[intKey]) return primaryTeamKey(intKey);
     }
 
     const norm = normalizeTeamKey(cleaned);
-    if (TEAM_CODE_MAP[cleaned]) return cleaned;
-    if (TEAM_CODE_MAP[norm]) return norm;
-    if (STANDINGS_ALIASES[norm]) return STANDINGS_ALIASES[norm];
-    return null;
+    if (TEAM_CODE_MAP[cleaned]) return primaryTeamKey(cleaned);
+    if (TEAM_CODE_MAP[norm]) return primaryTeamKey(norm);
+    if (STANDINGS_ALIASES[norm]) return primaryTeamKey(STANDINGS_ALIASES[norm]);
+    return norm;
   }
 
   function normalizeTeamKey(name) {

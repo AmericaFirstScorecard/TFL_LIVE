@@ -368,13 +368,20 @@
     const cleaned = String(raw ?? "").trim();
     if (!cleaned) return { displayName: "Team", logoKey: "", canonicalKey: "" };
 
-    const alias = TEAM_NAME_ALIASES.get(normalizeTeamKey(cleaned));
-    const canonical = alias || canonicalTeamKey(cleaned);
+    const canonical = canonicalTeamKey(cleaned);
     const codeMatch = canonical ? TEAM_CODE_MAP[canonical] : null;
     const displayName = codeMatch?.name || prettifyTeamName(cleaned);
     const logoKey = codeMatch?.logo || (canonical || normalizeTeamKey(displayName));
 
     return { displayName, logoKey, canonicalKey: canonical || normalizeTeamKey(displayName) };
+  }
+
+  function primaryTeamKey(key) {
+    const info = TEAM_CODE_MAP[key];
+    if (info?.logo || info?.name) {
+      return normalizeTeamKey(info.logo || info.name);
+    }
+    return normalizeTeamKey(key);
   }
 
   function canonicalTeamKey(raw) {
@@ -384,14 +391,14 @@
     const asNumber = Number(cleaned);
     if (!Number.isNaN(asNumber)) {
       const intKey = String(Math.trunc(asNumber));
-      if (TEAM_CODE_MAP[intKey]) return intKey;
+      if (TEAM_CODE_MAP[intKey]) return primaryTeamKey(intKey);
     }
 
     const norm = normalizeTeamKey(cleaned);
-    if (TEAM_CODE_MAP[cleaned]) return cleaned;
-    if (TEAM_CODE_MAP[norm]) return norm;
+    if (TEAM_CODE_MAP[cleaned]) return primaryTeamKey(cleaned);
+    if (TEAM_CODE_MAP[norm]) return primaryTeamKey(norm);
     const alias = TEAM_NAME_ALIASES.get(norm);
-    if (alias) return alias;
+    if (alias) return primaryTeamKey(alias);
     return norm;
   }
 
@@ -589,7 +596,9 @@
       })
       .filter((r) => r.player);
 
-    return { mvpRecords: records, standings: sortedStandings, roster };
+    const rosterWithProfiles = mergeRosterWithRecords(roster, records);
+
+    return { mvpRecords: records, standings: sortedStandings, roster: rosterWithProfiles };
   }
 
   function parsePassingSheet(workbook) {
@@ -687,6 +696,19 @@
     return map;
   }
 
+  function mergeRosterWithRecords(roster, records) {
+    const merged = new Map(roster || new Map());
+    (records || []).forEach((rec) => {
+      const name = rec?.player;
+      if (!name) return;
+      const existing = merged.get(name) || {};
+      const team = existing.team || rec.team || "";
+      const image = existing.image ?? null;
+      merged.set(name, { team, image });
+    });
+    return merged;
+  }
+
   function parseStandingsSheet(workbook) {
     const sheetName =
       workbook.SheetNames.find((n) => n.toLowerCase().includes("standing")) || workbook.SheetNames[0];
@@ -730,9 +752,12 @@
   function buildStandingsLookup(rows) {
     const map = new Map();
     rows.forEach((row) => {
-      const key = normalizeTeamKey(row.team);
-      if (!key) return;
-      map.set(key, row);
+      const norm = normalizeTeamKey(row.team);
+      const canonical = canonicalTeamKey(row.team);
+      [norm, canonical].forEach((key) => {
+        if (!key) return;
+        map.set(key, row);
+      });
     });
     return map;
   }
@@ -856,7 +881,8 @@
     Object.entries(TEAM_CODE_MAP).forEach(([key, info]) => {
       if (!info?.name) return;
       const norm = normalizeTeamKey(info.name);
-      if (!map.has(norm)) map.set(norm, key);
+      const canonical = primaryTeamKey(key);
+      if (!map.has(norm)) map.set(norm, canonical);
     });
     return map;
   }
