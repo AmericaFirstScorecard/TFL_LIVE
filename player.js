@@ -45,8 +45,6 @@
     teamInfo: null,
     teamKey: "",
     seasonStats: { seasons: new Map(), allTime: new Map(), order: [] },
-    legacyMap: new Map(),
-    legacyPromise: null,
   };
 
   const els = {};
@@ -112,45 +110,6 @@
     return text;
   }
 
-  async function ensureLegacyData() {
-    if (!window.Legacy?.loadLegacyData) return null;
-    if (state.legacyMap?.size) return state.legacyMap;
-    if (!state.legacyPromise) {
-      state.legacyPromise = window.Legacy.loadLegacyData().then((data) => {
-        state.legacyMap = data.legacyMap || new Map();
-        state.legacyPromise = null;
-        return state.legacyMap;
-      }).catch((err) => {
-        console.error("[legacy]", err);
-        state.legacyPromise = null;
-        return null;
-      });
-    }
-    return state.legacyPromise;
-  }
-
-  function lookupLegacy(name) {
-    if (!state.legacyMap?.size) return null;
-    const key = normalizePlayerKey(name);
-    if (!key) return null;
-    return state.legacyMap.get(key) || null;
-  }
-
-  function annotateLegacy(records) {
-    if (!records?.length) return records;
-    return records.map((rec) => {
-      const legacy = lookupLegacy(rec.player);
-      if (!legacy) return rec;
-      return {
-        ...rec,
-        legacyScore: legacy.roundedScore ?? Math.round(legacy.score ?? 0),
-        legacyTier: legacy.tier,
-        legacyTierKey: legacy.tierKey,
-        legacyHighlights: legacy.highlights || [],
-      };
-    });
-  }
-
   async function fetchMvp() {
     const buffer = await fetchArrayBuffer(MVP_CSV_URL);
     const { mvpRecords, standings, roster } = parseMvpWorkbook(buffer);
@@ -158,8 +117,7 @@
     state.rosterLookup = buildRosterLookup(roster);
     state.standings = standings;
     state.standingsLookup = buildStandingsLookup(standings);
-    await ensureLegacyData();
-    state.players = annotateLegacy(mvpRecords);
+    state.players = mvpRecords;
   }
 
   async function fetchSchedule() {
@@ -209,13 +167,11 @@
     setPlayerAvatar(els.playerAvatar, player || { player: displayName });
 
     const metaParts = [];
-    const legacy = lookupLegacy(displayName);
     if (!isActive) metaParts.push("Inactive player");
     if (player) {
       metaParts.push(`MVP ${formatScore(player.mvpScore)}`);
       if (player.winPct != null) metaParts.push(`Win% ${formatPct(player.winPct)}`);
     }
-    if (legacy) metaParts.push(`Legacy ${legacy.roundedScore ?? Math.round(legacy.score || 0)} (${legacy.tier})`);
     const teamLabel = state.teamInfo ? state.teamInfo.displayName : state.teamKey || "Team";
     if (metaParts.length === 0) metaParts.push("Awaiting stats");
     if (els.playerMeta) els.playerMeta.textContent = metaParts.join(" • ");
@@ -278,15 +234,10 @@
     els.playerStats.innerHTML = "";
     const player = state.playerRecord;
     const standing = lookupStanding(state.standingsLookup, state.teamInfo?.displayName);
-    const legacy = lookupLegacy(player?.player || state.playerName);
 
     const cards = [];
     cards.push({ label: "Team", value: state.teamInfo?.displayName || "—" });
     cards.push({ label: "MVP Score", value: player ? formatScore(player.mvpScore) : "—" });
-    cards.push({
-      label: "Legacy",
-      value: legacy ? `${legacy.roundedScore ?? Math.round(legacy.score || 0)} (${legacy.tier})` : "—",
-    });
     cards.push({ label: "Win%", value: player ? formatPct(player.winPct) : "—" });
     cards.push({ label: "Wins", value: player ? formatCount(player.wins) : "—" });
     if (standing) cards.push({ label: "Team Record", value: formatRecord(standing) });

@@ -713,6 +713,14 @@ body {
   border-radius: 16px;
   padding: 14px;
   background: linear-gradient(135deg, rgba(255,255,255,0.02), rgba(15,23,42,0.6));
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.18);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.2s ease;
+}
+
+.compare-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.26);
+  border-color: rgba(96, 165, 250, 0.3);
 }
 
 .compare-card__title {
@@ -749,6 +757,12 @@ body {
   border-radius: 14px;
   padding: 12px;
   background: rgba(255, 255, 255, 0.02);
+  transition: transform 0.18s ease, border-color 0.2s ease;
+}
+
+.compare-side:hover {
+  transform: translateY(-1px);
+  border-color: rgba(96, 165, 250, 0.35);
 }
 
 .compare-side__header {
@@ -800,6 +814,106 @@ body {
 }
 
 .compare-notes {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.predictor {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 16px;
+  align-items: center;
+}
+
+.predictor__ring {
+  --pct-away-deg: calc(var(--pct-away) * 3.6deg);
+  --pct-home-deg: calc(360deg - var(--pct-away-deg));
+  position: relative;
+  width: 180px;
+  height: 180px;
+}
+
+.predictor__ring-track,
+.predictor__ring-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.predictor__ring-track {
+  background: conic-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.predictor__ring-fill {
+  background: conic-gradient(
+    rgba(96, 165, 250, 0.9) 0deg,
+    rgba(96, 165, 250, 0.9) var(--pct-away-deg),
+    rgba(248, 113, 113, 0.9) var(--pct-away-deg),
+    rgba(248, 113, 113, 0.9) 360deg
+  );
+  mask: radial-gradient(circle at center, transparent 62px, black 64px);
+}
+
+.predictor__logos {
+  position: absolute;
+  inset: 22%;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  align-items: center;
+  justify-items: center;
+}
+
+.predictor__logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.predictor__logo--left {
+  justify-self: end;
+}
+
+.predictor__logo--right {
+  justify-self: start;
+}
+
+.predictor__details {
+  display: grid;
+  gap: 8px;
+}
+
+.predictor__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(96, 165, 250, 0.06);
+}
+
+.predictor__row--home {
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.predictor__label {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.predictor__value {
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.predictor__note {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.4;
@@ -2500,6 +2614,13 @@ body {
   background: rgba(255, 255, 255, 0.03);
   display: grid;
   gap: 6px;
+  transition: transform 0.16s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.team-stat-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(96, 165, 250, 0.3);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
 }
 
 .team-stat-card__label {
@@ -2526,6 +2647,13 @@ body {
   background: rgba(255, 255, 255, 0.03);
   display: grid;
   gap: 8px;
+  transition: transform 0.16s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.team-roster__card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(52, 211, 153, 0.3);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.26);
 }
 
 .team-roster__header {
@@ -2605,6 +2733,13 @@ body {
   grid-template-columns: 1fr auto;
   gap: 10px;
   align-items: center;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.team-schedule__card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(96, 165, 250, 0.3);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
 }
 
 .team-schedule__matchup {
@@ -2656,6 +2791,13 @@ body {
   background: rgba(255, 255, 255, 0.03);
   display: grid;
   gap: 10px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.hardware-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(168, 85, 247, 0.25);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.25);
 }
 
 .hardware-card__header {
