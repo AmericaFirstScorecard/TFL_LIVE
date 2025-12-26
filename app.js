@@ -720,9 +720,23 @@
         const away = String(pick(r, ["team away", "away", "away team", "team_away"])).trim();
         const home = String(pick(r, ["team home", "home", "home team", "team_home"])).trim();
   
-        const complete = isYes(
-          pick(r, ["game complete (yes, no)", "game complete", "complete", "final"])
-        );
+        // ✅ preserve 3 states from the sheet: "yes" | "no" | "live"
+        const completeCell = String(
+          pick(r, [
+            "game complete (yes, no, live)",
+            "game complete (yes, no)",
+            "game complete",
+            "complete",
+            "final",
+          ])
+        )
+          .trim()
+          .toLowerCase();
+  
+        const complete =
+          completeCell === "live" ? "live" :
+          isYes(completeCell) ? "yes" :
+          "no";
   
         const startTime = String(
           pick(r, [
@@ -742,7 +756,7 @@
           week,
           away,
           home,
-          complete,
+          complete,      // "yes" | "no" | "live"
           startTime,
           scoreHome,
           scoreAway,
@@ -804,13 +818,32 @@
     const teams = document.createElement("div");
     teams.className = "schedule-game__teams";
   
-    const isFinal = Boolean(game.complete);
+    const completeState = String(game.complete ?? "").trim().toLowerCase(); // "yes" | "no" | "live"
+    const isFinal = completeState === "yes";
+    const isLive = completeState === "live";
+  
     const awayScore = game.scoreAway;
     const homeScore = game.scoreHome;
+  
+    // ✅ compute time ONCE (avoid duplicate const rawTime)
+    const rawTime = String(game.startTime ?? "").trim();
+    const missingTime = !rawTime || /^(-|—|tbd|na|n\/a|null|undefined)$/i.test(rawTime);
+    const hasTime = !missingTime;
+  
+    // ✅ your rules:
+    // yes => FINAL
+    // live => LIVE
+    // no => UPCOMING if has time else UNSCHEDULED
+    const statusText =
+      isFinal ? "FINAL" :
+      isLive ? "LIVE" :
+      hasTime ? "UPCOMING" :
+      "UNSCHEDULED";
   
     let awayState = "none";
     let homeState = "none";
   
+    // winner/loser only when FINAL
     if (isFinal && awayScore != null && homeScore != null) {
       if (awayScore > homeScore) {
         awayState = "winner";
@@ -827,7 +860,7 @@
     connectorA.className = "schedule__connector";
     connectorA.textContent = "vs";
     connectorA.style.textAlign = "center";
-    connectorA.style.fontsize = "12px";
+    connectorA.style.fontSize = "12px"; // ✅ fontSize (not fontsize)
     connectorA.style.color = "#9ca3af";
     connectorA.style.paddingTop = "5px";
     connectorA.style.paddingBottom = "5px";
@@ -847,19 +880,17 @@
   
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
-
-    const rawTime = String(game.startTime ?? "").trim();
-    const missingTime = !rawTime || /^(-|—|tbd|na|n\/a|null|undefined)$/i.test(rawTime);
-    
     timePill.textContent = missingTime ? "UNSCHEDULED" : rawTime;
-
+  
     const divider = document.createElement("span");
     divider.style.display = "inline-block";
     divider.style.width = "10px";
   
     const statusPill = document.createElement("span");
-    statusPill.className = isFinal ? "pill pill--warning" : "pill";
-    statusPill.textContent = isFinal ? "FINAL" : "SCHEDULED";
+    statusPill.className = "pill";
+    if (isFinal) statusPill.classList.add("pill--warning");
+    if (isLive) statusPill.classList.add("pill--accent"); // optional: make LIVE pop
+    statusPill.textContent = statusText;
   
     center.appendChild(timePill);
     center.appendChild(divider);
@@ -872,7 +903,6 @@
   
     return wrap;
   }
-
   
   function scheduleTeamChip(teamRaw, label, winnerState, teamScore, isFinal) {
     const teamInfo = resolveTeam(teamRaw);
