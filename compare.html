@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Side-by-side comparison tool for Tate Football League teams." />
+  <title>TFL Team Comparison</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="logos/TFLs.svg">
+  <script defer src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="compare.js"></script>
+</head>
+<body>
+  <div class="page team-page">
+    <div class="team-page__header">
+      <a class="team-page__back" href="index.html">← Back to live dashboard</a>
+      <div class="brand">TFL Live Monitor</div>
+    </div>
+
+    <section class="panel">
+      <div class="panel__header">
+        <div>
+          <div class="chart-card__title">Team Comparison Tool</div>
+          <div class="chart-card__subtitle">Pick any two teams to see who is stronger overall and right now.</div>
+        </div>
+        <div class="badge badge--ghost" id="compareStatus">Loading teams…</div>
+      </div>
+
+      <div class="compare-controls">
+        <div class="compare-select">
+          <label for="compareTeamA">Team A</label>
+          <select id="compareTeamA"></select>
+        </div>
+        <button class="swap-button" id="compareSwap" type="button" aria-label="Swap teams">⇄</button>
+        <div class="compare-select">
+          <label for="compareTeamB">Team B</label>
+          <select id="compareTeamB"></select>
+        </div>
+      </div>
+
+      <div class="pill-row pill-row--wrap" id="compareWindow">
+        <button class="pill pill--ghost pill--active" data-window="current" type="button">Current season</button>
+        <button class="pill pill--ghost" data-window="playoffs" type="button">Playoffs</button>
+        <button class="pill pill--ghost" data-window="last3" type="button">Last 3</button>
+        <button class="pill pill--ghost" data-window="last5" type="button">Last 5</button>
+        <button class="pill pill--ghost" data-window="last10" type="button">Last 10</button>
+        <button class="pill pill--ghost" data-window="all" type="button">All time</button>
+      </div>
+
+      <div class="compare-grid" id="compareGrid">
+        <div class="state">Select two teams to view the comparison.</div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
