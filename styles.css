@@ -876,6 +876,25 @@ body {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 10px 24px rgba(0, 0, 0, 0.35);
 }
 
+.predictor__center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.predictor__lead {
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.predictor__lead-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .predictor__logo--left {
   justify-self: end;
 }
@@ -885,32 +904,47 @@ body {
 }
 
 .predictor__details {
-  display: grid;
-  gap: 8px;
-}
-
-.predictor__row {
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.predictor__bar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: rgba(96, 165, 250, 0.06);
 }
 
-.predictor__row--home {
-  background: rgba(248, 113, 113, 0.08);
-}
-
-.predictor__label {
+.predictor__bar-label {
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 700;
 }
 
-.predictor__value {
+.predictor__bar-value {
   font-weight: 800;
-  font-size: 18px;
+  font-size: 16px;
+}
+
+.predictor__bar-track {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.predictor__bar-fill {
+  position: absolute;
+  inset: 0;
+  width: calc(var(--pct) * 100%);
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.8), rgba(168, 85, 247, 0.9));
+  box-shadow: 0 0 14px rgba(168, 85, 247, 0.35);
+}
+
+.predictor__bar--home .predictor__bar-fill {
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.82), rgba(96, 165, 250, 0.8));
 }
 
 .predictor__note {
@@ -2713,6 +2747,15 @@ body {
   border-radius: 10px;
   font-weight: 700;
   font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.team-roster__badge--legacy {
+  padding: 0;
+  border: none;
+  background: transparent;
 }
 
 .team-roster__badge-meta {

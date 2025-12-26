@@ -32,6 +32,8 @@
   const state = {
     standings: [],
     standingsLookup: new Map(),
+    allTimeStandings: [],
+    allTimeLookup: new Map(),
     rosterMap: new Map(),
     playersByTeam: new Map(),
     scheduleGames: [],
@@ -79,7 +81,7 @@
 
   async function loadData() {
     try {
-      await Promise.all([fetchMvp(), fetchSchedule()]);
+      await Promise.all([fetchMvp(), fetchSchedule(), fetchAllTimeStandings()]);
       populateTeamSelects();
       render();
       if (els.status) els.status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
@@ -120,6 +122,17 @@
   async function fetchSchedule() {
     const text = await fetchText(SCHEDULE_CSV_URL);
     state.scheduleGames = parseScheduleCSV(text);
+  }
+
+  async function fetchAllTimeStandings() {
+    if (!window.Legacy?.loadLegacyData) return;
+    try {
+      const data = await window.Legacy.loadLegacyData();
+      state.allTimeStandings = data.standings || [];
+      state.allTimeLookup = buildStandingsLookup(state.allTimeStandings);
+    } catch (err) {
+      console.error("[compare] all-time standings", err);
+    }
   }
 
   function populateTeamSelects() {
@@ -280,10 +293,11 @@
 
   function buildTeamProfile(teamKey) {
     const teamInfo = resolveTeam(teamKey);
-    const standing = lookupStanding(state.standingsLookup, teamKey) || lookupStanding(state.standingsLookup, teamInfo.displayName);
+    const lookup = state.window === "all" && state.allTimeLookup.size ? state.allTimeLookup : state.standingsLookup;
+    const standing = lookupStanding(lookup, teamKey) || lookupStanding(lookup, teamInfo.displayName);
     const players = state.playersByTeam.get(teamKey) || state.playersByTeam.get(normalizeTeamKey(teamInfo.displayName)) || [];
     const totals = computeTeamTotals(players);
-    const windowStats = buildGameWindowStats(teamKey, state.window);
+    const windowStats = state.window === "all" ? buildAllTimeWindowStats(teamKey, standing) : buildGameWindowStats(teamKey, state.window);
 
     return {
       teamInfo,
@@ -291,10 +305,28 @@
       players,
       totals,
       recordText: standing ? formatRecord(standing) : "Record —",
-      winPct: standing?.winPct ?? null,
+      winPct: standing?.winPct ?? windowStats.winPct ?? null,
       avgFor: windowStats.avgFor,
       avgAgainst: windowStats.avgAgainst,
       avgMargin: windowStats.avgMargin,
+    };
+  }
+
+  function buildAllTimeWindowStats(teamKey, standing) {
+    const wins = standing?.wins ?? null;
+    const losses = standing?.losses ?? null;
+    const draws = standing?.draws ?? null;
+    const games = standing?.games ?? null;
+    const winPct = standing?.winPct ?? (games ? (wins + (draws || 0) * 0.5) / games : null);
+
+    return {
+      avgFor: null,
+      avgAgainst: null,
+      avgMargin: null,
+      wins,
+      losses,
+      draws,
+      winPct,
     };
   }
 
@@ -848,7 +880,7 @@
       case "last10":
         return "Last 10 completed games";
       case "all":
-        return "All completed games";
+        return "All-time history (SZN3-10)";
       default:
         return "Current season to date";
     }
