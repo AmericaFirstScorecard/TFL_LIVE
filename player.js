@@ -254,10 +254,7 @@
       if (row.kind === "all-time") tr.className = "table__row--accent";
 
       const seasonCell = document.createElement("td");
-      seasonCell.innerHTML =
-        row.kind === "all-time"
-          ? `<span class="table__pill">All time</span>`
-          : escapeHtml(row.season);
+      seasonCell.textContent = formatSeasonLabel(row.season, row.kind);
       tr.appendChild(seasonCell);
 
       const teamCell = document.createElement("td");
@@ -539,6 +536,16 @@
   function parseSeasonNumber(label) {
     const match = String(label || "").match(/(\d+)/);
     return match ? parseInt(match[1], 10) : 0;
+  }
+
+  function formatSeasonLabel(label, kind) {
+    const raw = String(label || "").trim();
+    if (kind === "all-time") return "All time";
+    const match = raw.match(/szn\s*(\d+)/i) || raw.match(/szn(\d+)/i);
+    if (match) return `Season ${match[1]}`;
+    const numberMatch = raw.match(/season\s*(\d+)/i);
+    if (numberMatch) return `Season ${numberMatch[1]}`;
+    return raw || "Season";
   }
 
   function normalizePlayerKey(name) {

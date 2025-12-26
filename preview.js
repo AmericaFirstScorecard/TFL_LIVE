@@ -192,8 +192,18 @@
     stats.className = "compare-card";
     stats.innerHTML = `<div class="compare-card__title">Stat matchup</div>`;
 
-    const rows = document.createElement("div");
-    rows.className = "compare-row";
+    const matchup = document.createElement("div");
+    matchup.className = "preview-matchup";
+
+    const headerRow = document.createElement("div");
+    headerRow.className = "preview-matchup__header";
+    headerRow.innerHTML = `
+      <div class="preview-matchup__team">${escapeHtml(profileAway.teamName)}</div>
+      <div class="preview-metric__label">Metric</div>
+      <div class="preview-matchup__team">${escapeHtml(profileHome.teamName)}</div>
+    `;
+    matchup.appendChild(headerRow);
+
     [
       { label: "Win%", a: formatPct(profileAway.winPct), b: formatPct(profileHome.winPct) },
       { label: "Avg margin (last 3)", a: formatSigned(profileAway.window.avgMargin), b: formatSigned(profileHome.window.avgMargin) },
@@ -204,16 +214,16 @@
       { label: "Sacks", a: formatCount(profileAway.totals.sacks), b: formatCount(profileHome.totals.sacks) },
     ].forEach((metric) => {
       const row = document.createElement("div");
-      row.className = "compare-metric";
-      row.style.gridTemplateColumns = "1fr auto auto";
+      row.className = "preview-metric";
       row.innerHTML = `
-        <div class="compare-metric__label">${escapeHtml(metric.label)}</div>
-        <div class="compare-metric__value">${escapeHtml(metric.a)}</div>
-        <div class="compare-metric__value">${escapeHtml(metric.b)}</div>
+        <div class="preview-metric__value preview-metric__value--left">${escapeHtml(metric.a)}</div>
+        <div class="preview-metric__label">${escapeHtml(metric.label)}</div>
+        <div class="preview-metric__value">${escapeHtml(metric.b)}</div>
       `;
-      rows.appendChild(row);
+      matchup.appendChild(row);
     });
-    stats.appendChild(rows);
+
+    stats.appendChild(matchup);
     frag.appendChild(stats);
 
     const storylines = document.createElement("div");
@@ -249,6 +259,7 @@
     const standing = lookupStanding(state.standingsLookup, teamKey);
     const players = state.playersByTeam.get(teamKey) || [];
     return {
+      teamName: resolveTeam(teamKey).displayName,
       players,
       totals: computeTeamTotals(players),
       winPct: standing?.winPct ?? null,
