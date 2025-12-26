@@ -549,11 +549,14 @@
       }
       if (state.matchupAbortController === controller) state.matchupAbortController = null;
       state.lastMatchupFreshness = nextFreshness || state.lastMatchupFreshness;
-      state.lastMatchup = parsed;
-      state.matchupArchive = parsedResult.archive || new Map();
-      state.lastMatchupGameCode = parsed.gameCode || null;
+      const mergedArchive = mergeMatchupArchive(parsedResult.archive || new Map());
+      const { matchup: newestMatchup, code: newestCode } = selectNewestMatchup(mergedArchive);
+      const matchupToRender = newestMatchup || parsed;
+
+      state.lastMatchup = matchupToRender;
+      state.lastMatchupGameCode = newestCode || parsed.gameCode || null;
       state.lastMatchupAcceptedAt = Date.now();
-      renderMatchup(parsed);
+      renderMatchup(matchupToRender);
       if (state.lastScheduleGames?.length) renderSchedule(state.lastScheduleGames);
       setLoading(els.winLoading, false);
     } catch (err) {
@@ -838,10 +841,16 @@
       weekCard.appendChild(list);
       frag.appendChild(weekCard);
     }
-  
+
     els.scheduleFeed.appendChild(frag);
   }
-  
+
+  function matchupFromArchive(gameCode) {
+    const normalized = normalizeGameCode(gameCode) || gameCode;
+    if (!normalized) return null;
+    return state.matchupArchive?.get(normalized) || null;
+  }
+
   function renderScheduleGame(game) {
     const wrap = document.createElement("div");
     wrap.className = "schedule-game";
@@ -851,7 +860,7 @@
   
     const completeState = String(game.complete ?? "").trim().toLowerCase(); // "yes" | "no" | "live"
     const gameCode = normalizeGameCode(game.gameCode || game.gameCodeRaw);
-    const hasDetails = Boolean(gameCode && state.matchupArchive && state.matchupArchive.has(gameCode));
+    const hasDetails = Boolean(gameCode && matchupFromArchive(gameCode));
     const isFinal = completeState === "yes";
     const isLive = completeState === "live";
   
@@ -1018,8 +1027,9 @@
 
   function openGameDetail(gameCode, gameFromSchedule) {
     if (!gameCode || !els.gameDetailOverlay) return;
-    const parsed = state.matchupArchive?.get(gameCode);
+    const parsed = matchupFromArchive(gameCode);
     if (!parsed) return;
+    const normalizedCode = normalizeGameCode(gameCode) || gameCode;
 
     const teamAInfo = resolveTeam(parsed.teamA);
     const teamBInfo = resolveTeam(parsed.teamB);
@@ -1028,7 +1038,7 @@
     const metrics = analyzeGame(homeSeries, parsed.snapshots);
     const latest = parsed.snapshots[parsed.snapshots.length - 1] || {};
 
-    if (els.gameDetailTitle) els.gameDetailTitle.textContent = `Game ${gameCode}`;
+    if (els.gameDetailTitle) els.gameDetailTitle.textContent = `Game ${normalizedCode}`;
     if (els.gameDetailSubtitle)
       els.gameDetailSubtitle.textContent = `${teamAInfo.displayName} vs ${teamBInfo.displayName}`;
 
@@ -1268,6 +1278,45 @@
       latest: archive.get(latestCode),
       archive,
     };
+  }
+
+  function mergeMatchupArchive(nextArchive) {
+    const merged = new Map(state.matchupArchive || []);
+    if (!nextArchive || typeof nextArchive.forEach !== "function") {
+      state.matchupArchive = merged;
+      return merged;
+    }
+
+    nextArchive.forEach((parsed, key) => {
+      const normalizedCode = normalizeGameCode(parsed?.gameCode || key) || normalizeGameCode(key) || key;
+      if (!normalizedCode) return;
+      const normalizedMatchup = { ...parsed, gameCode: normalizedCode };
+      const existing = merged.get(normalizedCode);
+      if (!existing || isNewerMatchup(normalizedMatchup, existing)) {
+        merged.set(normalizedCode, normalizedMatchup);
+      }
+    });
+
+    state.matchupArchive = merged;
+    return merged;
+  }
+
+  function selectNewestMatchup(archive) {
+    const codes = archive ? Array.from(archive.keys()) : [];
+    if (!codes.length) return { code: null, matchup: null };
+    const sorted = codes.sort(compareGameCodes);
+    const code = sorted[sorted.length - 1];
+    return { code, matchup: archive.get(code) || null };
+  }
+
+  function isNewerMatchup(next, prev) {
+    if (!prev) return true;
+    const nextSnapshots = next?.snapshots?.length ?? 0;
+    const prevSnapshots = prev?.snapshots?.length ?? 0;
+    if (nextSnapshots !== prevSnapshots) return nextSnapshots > prevSnapshots;
+    const lastNextUpdate = next?.snapshots?.[nextSnapshots - 1]?.updateIndex ?? -Infinity;
+    const lastPrevUpdate = prev?.snapshots?.[prevSnapshots - 1]?.updateIndex ?? -Infinity;
+    return lastNextUpdate >= lastPrevUpdate;
   }
 
   function parseMatchupSheet(workbook, sheetName) {
