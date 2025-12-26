@@ -124,6 +124,17 @@ body {
   text-decoration: underline;
 }
 
+.player-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: rgba(96, 165, 250, 0.75);
+}
+
+.player-link:hover {
+  color: rgba(255, 255, 255, 0.92);
+}
+
 .team-link--block {
   display: inline-flex;
   width: 100%;

@@ -1730,7 +1730,7 @@
           <div class="player">
             ${playerAvatar(row)}
             <div>
-              <div>${escapeHtml(row.player)}</div>
+              <div class="player__name" data-player-link></div>
               <div class="details">MVP Score: ${formatScore(row.mvpScore)}</div>
             </div>
           </div>
@@ -1755,10 +1755,13 @@
       `;
 
       const openDetail = () => openPlayerOverlay(row);
+      const playerLink = tr.querySelector("[data-player-link]");
+      playerLink?.appendChild(buildPlayerLink(row.player, row.team));
       tr.querySelector(".expand-btn")?.addEventListener("click", (e) => {
         e.stopPropagation();
         openDetail();
       });
+      playerLink?.addEventListener("click", (e) => e.stopPropagation());
       tr.tabIndex = 0;
       tr.addEventListener("click", openDetail);
       tr.addEventListener("keydown", (e) => {
@@ -1908,22 +1911,33 @@
     }
 
     players.forEach((player) => {
-      const card = document.createElement("button");
-      card.type = "button";
+      const card = document.createElement("div");
       card.className = "player-chip";
+      card.setAttribute("role", "button");
+      card.tabIndex = 0;
       const statSummary = buildPlayerStatLines(player)
         .map((line) => `${line.label}: ${line.value}`)
         .join(" • ");
       card.innerHTML = `
         ${playerAvatar(player)}
         <div class="player-chip__body">
-          <div class="player-chip__name">${escapeHtml(player.player)}</div>
+          <div class="player-chip__name" data-player-link></div>
           <div class="player-chip__meta">${statSummary || "No stat line yet"}</div>
           <div class="player-chip__meta">MVP: ${formatScore(player.mvpScore)} • Win%: ${formatPct(player.winPct)}</div>
         </div>
       `;
 
       card.addEventListener("click", () => renderPlayerDetail(player, teamInfo, standing));
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          renderPlayerDetail(player, teamInfo, standing);
+        }
+      });
+
+      const linkTarget = card.querySelector("[data-player-link]");
+      linkTarget?.appendChild(buildPlayerLink(player.player, teamInfo.canonicalKey || player.team));
+      linkTarget?.addEventListener("click", (e) => e.stopPropagation());
       els.teamPlayers.appendChild(card);
     });
   }
@@ -1938,7 +1952,7 @@
       <div class="player-detail-card__header">
         ${playerAvatar(player)}
         <div>
-          <div class="player-detail-card__name">${escapeHtml(player.player)}</div>
+          <div class="player-detail-card__name" data-player-link></div>
           <div class="player-detail-card__sub">${teamInfo.displayName} • ${standing ? formatRecord(standing) : "Record —"}</div>
         </div>
         <div class="badge">${formatScore(player.mvpScore)} MVP</div>
@@ -1957,6 +1971,9 @@
     `;
     els.playerDetail.innerHTML = "";
     els.playerDetail.appendChild(card);
+
+    const linkTarget = card.querySelector("[data-player-link]");
+    linkTarget?.appendChild(buildPlayerLink(player.player, teamInfo.canonicalKey || player.team));
   }
 
   function openPlayerOverlay(player) {
@@ -1972,7 +1989,7 @@
       <div class="player-modal__header">
         ${playerAvatar(player)}
         <div>
-          <div class="player-modal__title" id="playerOverlayTitle">${escapeHtml(player.player)}</div>
+          <div class="player-modal__title" id="playerOverlayTitle" data-player-link></div>
           <div class="player-modal__subtitle">
             <span>${escapeHtml(teamInfo.displayName)}</span>
             <span>${standing ? escapeHtml(formatRecord(standing)) : "Record —"}</span>
@@ -1996,6 +2013,7 @@
 
     els.playerOverlayContent.innerHTML = "";
     els.playerOverlayContent.appendChild(modal);
+    modal.querySelector("[data-player-link]")?.appendChild(buildPlayerLink(player.player, teamInfo.canonicalKey || player.team));
     els.playerOverlay.hidden = false;
   }
 
@@ -3110,6 +3128,26 @@
 
   function teamColorKey(team) {
     return team.logoKey || team.canonicalKey || team.displayName;
+  }
+
+  function playerPageUrl(playerName, teamKey) {
+    const encodedName = encodeURIComponent(playerName || "");
+    const rosterTeam = state.rosterMap.get(playerName || "")?.team;
+    const team =
+      canonicalTeamKey(teamKey || rosterTeam) ||
+      normalizeTeamKey(teamKey || rosterTeam);
+    const teamParam = team ? `&team=${encodeURIComponent(team)}` : "";
+    return `player.html?name=${encodedName}${teamParam}`;
+  }
+
+  function buildPlayerLink(playerName, teamKey, className = "") {
+    const link = document.createElement("a");
+    link.className = ["player-link", className].filter(Boolean).join(" ");
+    link.href = playerPageUrl(playerName, teamKey);
+    link.textContent = playerName || "Player";
+    link.addEventListener("click", (e) => e.stopPropagation());
+    link.addEventListener("keydown", (e) => e.stopPropagation());
+    return link;
   }
 
   function teamPageUrl(teamInfo) {
