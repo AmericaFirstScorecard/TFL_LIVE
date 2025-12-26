@@ -12,6 +12,7 @@
   <link rel="icon" type="image/svg+xml" href="logos/TFLs.svg">
   <script defer src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="hardware.js"></script>
   <script defer src="team.js"></script>
 </head>
 <body>
@@ -27,6 +28,13 @@
         <h1 class="team-hero__name" id="teamName">Loading team…</h1>
         <div class="team-hero__meta" id="teamMeta"></div>
       </div>
+    </section>
+
+    <section class="panel">
+      <div class="team-section__title">Hardware</div>
+      <div class="team-section__subtitle">Trophies and awards for this squad</div>
+      <div class="hardware-grid" id="teamHardware"></div>
+      <div class="state state--empty" id="teamHardwareEmpty" hidden>No hardware assigned yet.</div>
     </section>
 
     <section class="panel">
