@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Team detail page for Tate Football League." />
+  <title>TFL Team Page</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="logos/TFLs.svg">
+  <script defer src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="team.js"></script>
+</head>
+<body>
+  <div class="page team-page">
+    <div class="team-page__header">
+      <a class="team-page__back" href="index.html">← Back to live dashboard</a>
+      <div class="brand">TFL Live Monitor</div>
+    </div>
+
+    <section class="team-hero" id="teamHero">
+      <div class="team-hero__logo" id="teamLogo"></div>
+      <div>
+        <h1 class="team-hero__name" id="teamName">Loading team…</h1>
+        <div class="team-hero__meta" id="teamMeta"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="team-section__title">Team totals</div>
+      <div class="team-section__subtitle">Season summary and core stat lines</div>
+      <div class="team-panels" id="teamTotals"></div>
+    </section>
+
+    <section class="panel">
+      <div class="team-section__title">Roster</div>
+      <div class="team-section__subtitle">Player photos and individual statlines</div>
+      <div class="team-roster" id="teamRoster"></div>
+      <div class="state state--empty" id="teamRosterEmpty" hidden>No roster data yet for this team.</div>
+    </section>
+
+    <section class="panel">
+      <div class="team-section__title">Schedule</div>
+      <div class="team-section__subtitle">Completed and upcoming matchups</div>
+      <div class="team-schedule" id="teamSchedule"></div>
+      <div class="state state--empty" id="teamScheduleEmpty" hidden>No scheduled games for this team yet.</div>
+    </section>
+
+    <div class="team-error" id="teamError" hidden>Unable to load team data.</div>
+  </div>
+</body>
+</html>

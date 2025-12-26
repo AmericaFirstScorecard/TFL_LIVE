@@ -906,27 +906,28 @@
   
   function scheduleTeamChip(teamRaw, label, winnerState, teamScore, isFinal) {
     const teamInfo = resolveTeam(teamRaw);
-  
+
     const standing = findTeamRecord(teamRaw, teamInfo.displayName, teamInfo.canonicalKey);
     const recordText = standing ? formatRecord(standing) : "—";
-  
+
     const chip = document.createElement("div");
     chip.className = "seed-chip";
     chip.style.position = "relative";
-  
+    attachTeamNav(chip, teamInfo);
+
     if (winnerState === "winner") chip.classList.add("seed-chip--winner");
     if (winnerState === "loser") chip.classList.add("seed-chip--eliminated");
-  
+
     const logo = document.createElement("div");
     logo.className = "seed-chip__logo";
     setLogo(logo, teamInfo.logoKey);
-  
+
     const meta = document.createElement("div");
     meta.className = "seed-chip__meta";
-  
+
     const name = document.createElement("div");
     name.className = "seed-chip__name";
-    name.textContent = teamInfo.displayName;
+    name.innerHTML = `<a class="team-link" href="${teamPageUrl(teamInfo)}">${escapeHtml(teamInfo.displayName)}</a>`;
   
     const seed = document.createElement("div");
     seed.className = "seed-chip__seed";
@@ -1488,13 +1489,21 @@
       els.gameStatus.classList.toggle("badge--ghost", isFinal);
     }
 
-    if (els.teamAName) els.teamAName.textContent = teamAInfo.displayName;
-    if (els.teamBName) els.teamBName.textContent = teamBInfo.displayName;
+    setTeamLink(els.teamAName, teamAInfo.displayName, teamAInfo);
+    setTeamLink(els.teamBName, teamBInfo.displayName, teamBInfo);
 
     const teamARecord = findTeamRecord(teamAInfo.displayName, teamA);
     const teamBRecord = findTeamRecord(teamBInfo.displayName, teamB);
-    if (els.teamARecord) els.teamARecord.textContent = teamARecord ? formatRecord(teamARecord) : "Record —";
-    if (els.teamBRecord) els.teamBRecord.textContent = teamBRecord ? formatRecord(teamBRecord) : "Record —";
+    if (els.teamARecord) {
+      els.teamARecord.textContent = teamARecord ? formatRecord(teamARecord) : "Record —";
+      attachTeamNav(els.teamARecord, teamAInfo);
+    }
+    if (els.teamBRecord) {
+      els.teamBRecord.textContent = teamBRecord ? formatRecord(teamBRecord) : "Record —";
+      attachTeamNav(els.teamBRecord, teamBInfo);
+    }
+    attachTeamNav(els.teamALogo?.closest(".team"), teamAInfo);
+    attachTeamNav(els.teamBLogo?.closest(".team"), teamBInfo);
 
     updateScore(els.teamAScore, els.teamAScoreDelta, latest.scoreA, state.lastScores.a, "a");
     updateScore(els.teamBScore, els.teamBScoreDelta, latest.scoreB, state.lastScores.b, "b");
@@ -1727,10 +1736,10 @@
           </div>
         </td>
         <td>
-          <div class="team-chip">
+          <a class="team-chip team-link team-link--block" href="${teamPageUrl(resolveTeam(row.team))}">
             <span>${escapeHtml(row.team)}</span>
             <span class="record">${escapeHtml(recordText)}</span>
-          </div>
+          </a>
         </td>
         <td>${formatPct(row.winPct)}</td>
         <td>${formatScore(row.mvpScore)}</td>
@@ -1786,9 +1795,6 @@
       const teamKey = canonicalTeamKey(teamInfo.canonicalKey || teamInfo.displayName) || normalizeTeamKey(teamInfo.displayName);
 
       const teamCell = document.createElement("td");
-      const teamWrapper = document.createElement("div");
-      teamWrapper.className = "standings-team";
-
       const logo = document.createElement("div");
       logo.className = "standings-team__logo";
       setLogo(logo, teamInfo.logoKey);
@@ -1797,8 +1803,16 @@
       name.className = "standings-team__name";
       name.textContent = teamInfo.displayName;
 
-      teamWrapper.appendChild(logo);
-      teamWrapper.appendChild(name);
+      const link = document.createElement("a");
+      link.href = teamPageUrl(teamInfo);
+      link.className = "team-link standings-team";
+      link.title = `Open ${teamInfo.displayName} page`;
+      link.appendChild(logo);
+      link.appendChild(name);
+
+      const teamWrapper = document.createElement("div");
+      teamWrapper.className = "standings-team";
+      teamWrapper.appendChild(link);
       teamCell.appendChild(teamWrapper);
       tr.appendChild(teamCell);
 
@@ -1820,11 +1834,11 @@
 
       tr.classList.add("standings-row");
       tr.tabIndex = 0;
-      tr.addEventListener("click", () => openTeamDetail(row, teamInfo, teamKey));
+      tr.addEventListener("click", () => window.location.assign(teamPageUrl(teamInfo)));
       tr.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          openTeamDetail(row, teamInfo, teamKey);
+          window.location.assign(teamPageUrl(teamInfo));
         }
       });
 
@@ -2222,6 +2236,7 @@
     const chip = document.createElement("div");
     chip.className = "seed-chip";
     if (status) chip.classList.add(`seed-chip--${status}`);
+    if (seed) attachTeamNav(chip, resolveTeam(seed.team));
 
     const logo = document.createElement("div");
     logo.className = "seed-chip__logo";
@@ -2232,7 +2247,9 @@
     meta.className = "seed-chip__meta";
     const name = document.createElement("div");
     name.className = "seed-chip__name";
-    name.textContent = seed ? resolveTeam(seed.team).displayName : fallbackLabel;
+    name.innerHTML = seed
+      ? `<a class="team-link" href="${teamPageUrl(resolveTeam(seed.team))}">${escapeHtml(resolveTeam(seed.team).displayName)}</a>`
+      : fallbackLabel;
     const seedTag = document.createElement("div");
     seedTag.className = "seed-chip__seed";
     seedTag.textContent = seed ? `Seed ${seed.seed}` : seedLabel || "Awaiting seed";
@@ -3093,6 +3110,40 @@
 
   function teamColorKey(team) {
     return team.logoKey || team.canonicalKey || team.displayName;
+  }
+
+  function teamPageUrl(teamInfo) {
+    const key =
+      canonicalTeamKey(teamInfo?.canonicalKey || teamInfo?.logoKey || teamInfo?.displayName) ||
+      normalizeTeamKey(teamInfo?.displayName);
+    const encoded = encodeURIComponent(key || "");
+    return `team.html?team=${encoded}`;
+  }
+
+  function setTeamLink(el, label, teamInfo) {
+    if (!el || !teamInfo) return;
+    const link = document.createElement("a");
+    link.className = "team-link";
+    link.href = teamPageUrl(teamInfo);
+    link.textContent = label || teamInfo.displayName;
+    el.innerHTML = "";
+    el.appendChild(link);
+  }
+
+  function attachTeamNav(el, teamInfo) {
+    if (!el || !teamInfo) return;
+    const href = teamPageUrl(teamInfo);
+    if (el.dataset?.teamHref === href) return;
+    if (el.dataset) el.dataset.teamHref = href;
+    el.style.cursor = "pointer";
+    el.title = `Open ${teamInfo.displayName} page`;
+    el.onclick = () => window.location.assign(href);
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        window.location.assign(href);
+      }
+    });
   }
 
   function hexToRgba(hex, alpha) {
