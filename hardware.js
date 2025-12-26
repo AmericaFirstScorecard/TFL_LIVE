@@ -3,7 +3,7 @@
     {
       id: "szn9bowl",
       name: "Szn9Bowl Trophy",
-      description: "Season 9 Bowl champions",
+      description: "Season 9 Tate Bowl Champions",
       image: "hardware/Szn9Bowl.png",
       recipients: [
         { type: "player", id: "Brump", display: "Brump" },
@@ -13,23 +13,23 @@
     {
       id: "mvp",
       name: "MVP",
-      description: "Most valuable player honors",
+      description: "Most Valuable Player",
       image: "hardware/MVP.png",
       recipients: [{ type: "player", id: "Brump", display: "Brump" }],
     },
     {
       id: "bandb",
       name: "BandB Trophy",
-      description: "BandB rivalry trophy",
+      description: "Bourbon and Boots Rivalry Trophy",
       image: "hardware/bandb.png",
       recipients: [{ type: "team", id: "Louisville Cardinals", display: "Louisville Cardinals" }],
     },
     {
       id: "yankdix",
       name: "Yankdix",
-      description: "To be awarded",
+      description: "Yankee Dixie Rivarly Trophy",
       image: "hardware/yankdix.png",
-      recipients: [],
+      recipients: ["New England Patriots"],
     },
   ];
 
