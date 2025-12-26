@@ -1241,7 +1241,7 @@ body {
 
 .bracket__legend {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   padding: 4px 6px;
   color: var(--muted);
@@ -1262,7 +1262,7 @@ body {
 }
 
 .bracket__grid--board {
-  grid-template-columns: repeat(3, minmax(210px, 1fr)) minmax(260px, 1.2fr) repeat(3, minmax(210px, 1fr));
+  grid-template-columns: repeat(2, minmax(210px, 1fr)) minmax(260px, 1.2fr);
 }
 
 .bracket__column {

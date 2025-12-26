@@ -2038,7 +2038,8 @@
     summary.innerHTML = `
       <div class="bracket__summary-title">Seeds ranked by league points (P)</div>
       <div class="bracket__summary-body">
-        Seeds alternate sides to mirror two conferences. Seed #1 on each side clinches the Wild Card bye.
+        Top 5 seeds advance. Seed 6 is eliminated. Seeds 4 and 5 play for the Wild Card, and both semi-finalists
+        feed into the Tate Bowl from the left side of the bracket.
       </div>
     `;
     return summary;
@@ -2047,15 +2048,7 @@
   function buildBracketLegend() {
     const legend = document.createElement("div");
     legend.className = "bracket__legend";
-    [
-      "Wild Card",
-      "Divisional",
-      "Conference",
-      "Tate Bowl",
-      "Conference",
-      "Divisional",
-      "Wild Card",
-    ].forEach((label) => {
+    ["Wild Card", "Semi Final", "Tate Bowl"].forEach((label) => {
       const stage = document.createElement("div");
       stage.className = "bracket__legend-label";
       stage.textContent = label;
@@ -2068,39 +2061,30 @@
     const grid = document.createElement("div");
     grid.className = "bracket__grid bracket__grid--board";
 
-    grid.appendChild(buildBracketColumn(model.left, "wildcard", "left"));
-    grid.appendChild(buildBracketColumn(model.left, "divisional", "left"));
-    grid.appendChild(buildBracketColumn(model.left, "conference", "left"));
-    grid.appendChild(buildChampionshipColumn());
-    grid.appendChild(buildBracketColumn(model.right, "conference", "right"));
-    grid.appendChild(buildBracketColumn(model.right, "divisional", "right"));
-    grid.appendChild(buildBracketColumn(model.right, "wildcard", "right"));
+    grid.appendChild(buildBracketColumn(model.side, "wildcard", "left"));
+    grid.appendChild(buildBracketColumn(model.side, "semifinal", "left"));
+    grid.appendChild(buildChampionshipColumn(model.final));
 
     return grid;
   }
 
   function buildBracketModel(seeds) {
-    const { leftSeeds, rightSeeds } = distributeSeeds(seeds);
+    const { activeSeeds, eliminatedSeed } = prepareSingleSideSeeds(seeds);
+    const normalized = activeSeeds.map((seed) => ({ ...seed, confSeed: seed.seed }));
+    while (normalized.length < 5) normalized.push(buildPlaceholderSeed(normalized.length + 1));
+
     return {
-      left: buildBracketSide(leftSeeds, "Left Bracket"),
-      right: buildBracketSide(rightSeeds, "Right Bracket"),
+      side: buildBracketSideSingle(normalized, "Left Bracket"),
+      final: buildSingleFinalMatch(),
+      eliminated: eliminatedSeed,
     };
   }
 
-  function distributeSeeds(seeds) {
-    const limited = seeds.slice(0, 14);
-    const leftSeeds = [];
-    const rightSeeds = [];
-
-    limited.forEach((seed, idx) => {
-      const target = idx % 2 === 0 ? leftSeeds : rightSeeds;
-      target.push({ ...seed, confSeed: (target.length || 0) + 1 });
-    });
-
-    while (leftSeeds.length < 7) leftSeeds.push(buildPlaceholderSeed(leftSeeds.length + 1));
-    while (rightSeeds.length < 7) rightSeeds.push(buildPlaceholderSeed(rightSeeds.length + 1));
-
-    return { leftSeeds, rightSeeds };
+  function prepareSingleSideSeeds(seeds) {
+    if (!Array.isArray(seeds)) return { activeSeeds: [], eliminatedSeed: null };
+    const withoutSix = seeds.filter((seed) => seed.seed !== 6);
+    const eliminatedSeed = seeds.find((seed) => seed.seed === 6) || null;
+    return { activeSeeds: withoutSix.slice(0, 5), eliminatedSeed };
   }
 
   function buildPlaceholderSeed(confSeed, label = "TBD") {
@@ -2111,7 +2095,7 @@
     return { placeholder: true, label, confSeed };
   }
 
-  function buildBracketSide(seeds, label) {
+  function buildBracketSideSingle(seeds, label) {
     const findSeed = (confSeed) => seeds.find((s) => s.confSeed === confSeed) || buildPlaceholderSeed(confSeed);
 
     return {
@@ -2120,45 +2104,34 @@
       wildcard: [
         {
           title: "Wild Card",
-          top: findSeed(2),
-          bottom: findSeed(7),
-          note: "Winner advances to Divisional",
-        },
-        {
-          title: "Wild Card",
-          top: findSeed(3),
-          bottom: findSeed(6),
-          note: "Winner advances to Divisional",
-        },
-        {
-          title: "Wild Card",
           top: findSeed(4),
           bottom: findSeed(5),
-          note: "Winner faces top seed",
+          note: "Winner advances to Semi Final 1",
         },
       ],
-      divisional: [
+      semifinal: [
         {
-          title: "Divisional",
+          title: "Semi Final 1",
           top: findSeed(1),
-          bottom: buildWinnerSeed("Winner 4 vs 5"),
+          bottom: buildWinnerSeed("Wild Card winner"),
           note: "Top seed hosts",
           tag: "Clinched bye",
         },
         {
-          title: "Divisional",
-          top: buildWinnerSeed("Winner 2 vs 7"),
-          bottom: buildWinnerSeed("Winner 3 vs 6"),
+          title: "Semi Final 2",
+          top: findSeed(2),
+          bottom: findSeed(3),
         },
       ],
-      conference: [
-        {
-          title: "Conference Final",
-          top: buildWinnerSeed("Divisional winner A"),
-          bottom: buildWinnerSeed("Divisional winner B"),
-          highlight: true,
-        },
-      ],
+    };
+  }
+
+  function buildSingleFinalMatch() {
+    return {
+      title: "Tate Bowl",
+      top: buildWinnerSeed("Semi Finalist 1"),
+      bottom: buildWinnerSeed("Semi Finalist 2"),
+      note: "Winners of the two semi finals advance here",
     };
   }
 
@@ -2235,7 +2208,7 @@
     return card;
   }
 
-  function buildChampionshipColumn() {
+  function buildChampionshipColumn(finalMatch) {
     const column = document.createElement("div");
     column.className = "bracket__column bracket__column--center";
 
@@ -2244,23 +2217,25 @@
 
     const badge = document.createElement("div");
     badge.className = "bracket-card__badge";
-    badge.textContent = "Tate Bowl";
+    badge.textContent = finalMatch?.title || "Tate Bowl";
     card.appendChild(badge);
-
-    const hero = document.createElement("div");
-    hero.className = "bracket-card__hero";
-    hero.innerHTML = `<div class="bracket-card__hero-img" role="img" aria-label="Tate Bowl"></div>`;
-    card.appendChild(hero);
 
     const slots = document.createElement("div");
     slots.className = "bracket-card__slots bracket-card__slots--final";
-    slots.appendChild(seedSlot(buildWinnerSeed("Left champion"), { compact: true }));
+    slots.appendChild(seedSlot(finalMatch?.top || buildWinnerSeed("Semi Finalist 1"), { compact: true }));
     const connector = document.createElement("div");
     connector.className = "bracket-card__connector bracket-card__connector--final";
     connector.textContent = "vs";
     slots.appendChild(connector);
-    slots.appendChild(seedSlot(buildWinnerSeed("Right champion"), { compact: true }));
+    slots.appendChild(seedSlot(finalMatch?.bottom || buildWinnerSeed("Semi Finalist 2"), { compact: true }));
     card.appendChild(slots);
+
+    if (finalMatch?.note) {
+      const note = document.createElement("div");
+      note.className = "bracket-card__note";
+      note.textContent = finalMatch.note;
+      card.appendChild(note);
+    }
 
     column.appendChild(card);
     return column;
