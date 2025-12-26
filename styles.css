@@ -970,6 +970,13 @@ body {
   border-radius: 14px;
 }
 
+.player__avatar--sm {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
 .table .team-chip {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border);
@@ -1372,6 +1379,12 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.6px;
   margin-left: 6px;
+}
+
+.schedule-game__detail--details {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
 }
 
 .schedule-game__score {
@@ -2198,6 +2211,14 @@ body {
   gap: 12px;
 }
 
+.player-modal__badge-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .player-modal__title {
   font-size: 18px;
   font-weight: 800;
@@ -2218,6 +2239,12 @@ body {
   border: 1px solid rgba(168, 85, 247, 0.3);
   border-radius: 12px;
   font-weight: 700;
+}
+
+.player-modal__badge--legacy {
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 
 .player-modal__grid {
@@ -2421,6 +2448,10 @@ body {
   font-size: 12px;
 }
 
+.team-roster__badge-meta {
+  margin-top: 4px;
+}
+
 .team-schedule {
   display: grid;
   gap: 10px;
@@ -2547,6 +2578,68 @@ body {
   background: rgba(248, 113, 113, 0.1);
   color: var(--text);
   font-weight: 700;
+}
+
+.records-pane {
+  display: none;
+  margin-top: 12px;
+}
+
+.records-pane--active {
+  display: block;
+}
+
+.legacy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+.legacy-chip__tier {
+  font-weight: 900;
+}
+
+.legacy-chip__score {
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.legacy-chip--goat {
+  border-color: rgba(255, 215, 0, 0.6);
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.12), rgba(255, 255, 255, 0.06));
+}
+
+.legacy-chip--legend {
+  border-color: rgba(168, 85, 247, 0.5);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(255, 255, 255, 0.04));
+}
+
+.legacy-chip--icon {
+  border-color: rgba(14, 165, 233, 0.5);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(255, 255, 255, 0.04));
+}
+
+.legacy-chip--star {
+  border-color: rgba(94, 234, 212, 0.4);
+  background: linear-gradient(135deg, rgba(94, 234, 212, 0.12), rgba(255, 255, 255, 0.04));
+}
+
+.legacy-chip--rising {
+  border-color: rgba(96, 165, 250, 0.35);
+}
+
+.legacy-chip--prospect {
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 @keyframes scoreRise {

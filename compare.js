@@ -126,13 +126,24 @@
     const fallback = Object.values(TEAM_CODE_MAP)
       .map((t) => t.name)
       .filter(Boolean);
-    const options = [...teams, ...fallback].filter(Boolean);
+    const seen = new Set();
+    const options = [];
+    [...teams, ...fallback]
+      .filter(Boolean)
+      .forEach((name) => {
+        const info = resolveTeam(name);
+        const key = info.canonicalKey || normalizeTeamKey(info.displayName);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        options.push(info);
+      });
+
+    options.sort((a, b) => (a.displayName || "").localeCompare(b.displayName || ""));
 
     const buildOptions = (sel) => {
       if (!sel) return;
       sel.innerHTML = "";
-      options.forEach((name) => {
-        const info = resolveTeam(name);
+      options.forEach((info) => {
         const opt = document.createElement("option");
         opt.value = info.canonicalKey;
         opt.textContent = info.displayName;

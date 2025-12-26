@@ -128,6 +128,9 @@
     lastMatchupFetchedAt: null,
     lastMatchupAcceptedAt: null,
     gameDetailChart: null,
+    legacyMap: new Map(),
+    legacyLeaderboard: [],
+    legacyPromise: null,
   };
 
   const els = {};
@@ -170,6 +173,47 @@
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) refresh();
     });
+  }
+
+  async function ensureLegacyData() {
+    if (!window.Legacy?.loadLegacyData) return null;
+    if (state.legacyMap?.size) return state.legacyMap;
+    if (!state.legacyPromise) {
+      state.legacyPromise = window.Legacy.loadLegacyData().then((data) => {
+        state.legacyMap = data.legacyMap || new Map();
+        state.legacyLeaderboard = data.leaderboard || [];
+        state.legacyPromise = null;
+        return state.legacyMap;
+      }).catch((err) => {
+        console.error("[legacy]", err);
+        state.legacyPromise = null;
+        return null;
+      });
+    }
+    return state.legacyPromise;
+  }
+
+  function annotateLegacy(records) {
+    if (!records || !records.length) return records;
+    return records.map((rec) => {
+      const legacy = lookupLegacy(rec.player);
+      if (!legacy) return rec;
+      return {
+        ...rec,
+        legacyScore: Math.round(legacy.score ?? 0),
+        legacyTier: legacy.tier,
+        legacyTierKey: legacy.tierKey,
+        legacyHighlights: legacy.highlights || [],
+        legacyLabel: legacy.label || "Legacy",
+      };
+    });
+  }
+
+  function lookupLegacy(name) {
+    if (!state.legacyMap?.size) return null;
+    const key = normalizePlayerKey(name);
+    if (!key) return null;
+    return state.legacyMap.get(key) || null;
   }
 
   function cacheEls() {
@@ -595,15 +639,17 @@
       const buffer = await fetchArrayBuffer(url, controller.signal);
       if (requestId < state.mvpVersion) return;
       const { mvpRecords, standings, news, roster } = parseMvpWorkbook(buffer);
+      await ensureLegacyData();
+      const enrichedRecords = annotateLegacy(mvpRecords);
       state.mvpVersion = requestId;
       if (state.mvpAbortController === controller) state.mvpAbortController = null;
-      state.lastMvpRecords = mvpRecords;
+      state.lastMvpRecords = enrichedRecords;
       const sortedStandings = sortStandings(standings);
       state.lastStandings = sortedStandings;
       state.rosterMap = roster;
-      state.playersByTeam = buildPlayersByTeam(mvpRecords);
+      state.playersByTeam = buildPlayersByTeam(enrichedRecords);
       state.standingsLookup = buildStandingsLookup(sortedStandings);
-      renderMvp(mvpRecords);
+      renderMvp(enrichedRecords);
       renderStandings(sortedStandings);
       renderBracket(sortedStandings);
       state.newsRecords = news;
@@ -620,7 +666,7 @@
         state.mvpVersion = requestId;
         if (state.mvpAbortController === controller) state.mvpAbortController = null;
         showError(els.mvpError, `MVP feed error: ${err.message}`);
-        state.lastMvpRecords = buildSampleMvp();
+        state.lastMvpRecords = annotateLegacy(buildSampleMvp());
         const sampleStandings = sortStandings(buildSampleStandings());
         state.lastStandings = sampleStandings;
         state.rosterMap = new Map();
@@ -939,7 +985,7 @@
     if (isFinal && hasDetails) {
       const detailBtn = document.createElement("button");
       detailBtn.type = "button";
-      detailBtn.className = "pill schedule-game__detail";
+      detailBtn.className = "pill schedule-game__detail schedule-game__detail--details";
       detailBtn.textContent = "DETAILS";
       detailBtn.addEventListener("click", () => openGameDetail(gameCode, game));
       center.appendChild(detailBtn);
@@ -2066,6 +2112,13 @@
       { label: "Def INT", value: formatCount(player.defInt) },
       { label: "Def TD", value: formatCount(player.defTd) },
       { label: "Def score", value: formatScore(player.defScore) },
+      {
+        label: "Legacy",
+        value:
+          player.legacyScore != null
+            ? `${Math.round(player.legacyScore)}${player.legacyTier ? ` (${player.legacyTier})` : ""}`
+            : "—",
+      },
       { label: "Wins", value: formatCount(player.wins) },
       { label: "Win%", value: formatPct(player.winPct) },
       { label: "MVP Score", value: formatScore(player.mvpScore) },
@@ -2116,6 +2169,7 @@
           ? `${row.passTd ?? 0}/${row.interceptions ?? 0}`
           : "—";
       const passRating = row.passRating != null ? formatScore(row.passRating) : "—";
+      const legacyBadge = buildLegacyBadge(row);
       const statLines = buildPlayerStatLines(row);
       const statLinesHtml = (statLines.length ? statLines : [{ label: "Stats", value: "—" }])
         .map(
@@ -2133,7 +2187,10 @@
             ${playerAvatar(row)}
             <div>
               <div class="player__name" data-player-link></div>
-              <div class="details">MVP Score: ${formatScore(row.mvpScore)}</div>
+              <div class="details">
+                MVP Score: ${formatScore(row.mvpScore)}
+                ${row.legacyScore != null ? ` • Legacy: ${Math.round(row.legacyScore)}` : ""}
+              </div>
             </div>
           </div>
         </td>
@@ -2145,6 +2202,7 @@
         </td>
         <td>${formatPct(row.winPct)}</td>
         <td>${formatScore(row.mvpScore)}</td>
+        <td>${legacyBadge || "—"}</td>
         <td>${passRating}</td>
         <td>${row.yards != null ? Number(row.yards).toLocaleString() : "—"}</td>
         <td>${tdInt}</td>
@@ -2384,6 +2442,7 @@
     const standing = findTeamRecord(teamInfo.displayName, player.team);
 
     const metrics = buildPlayerMetrics(player);
+    const legacyBadge = buildLegacyBadge(player);
 
     const modal = document.createElement("div");
     modal.className = "player-modal";
@@ -2398,7 +2457,10 @@
             <span>Win%: ${formatPct(player.winPct)}</span>
           </div>
         </div>
-        <div class="player-modal__badge">${formatScore(player.mvpScore)} MVP</div>
+        <div class="player-modal__badge-group">
+          <div class="player-modal__badge">${formatScore(player.mvpScore)} MVP</div>
+          ${legacyBadge ? `<div class="player-modal__badge player-modal__badge--legacy">${legacyBadge}</div>` : ""}
+        </div>
       </div>
       <div class="player-modal__grid">
         ${metrics
@@ -3325,6 +3387,12 @@
       .toLowerCase();
   }
 
+  function normalizePlayerKey(name) {
+    return String(name || "")
+      .trim()
+      .toLowerCase();
+  }
+
   function resolveTeam(raw) {
     const cleaned = String(raw ?? "").trim();
     if (!cleaned) return { displayName: "Team", logoKey: "", canonicalKey: "" };
@@ -3491,6 +3559,19 @@
     const cls = hasImage ? "player__avatar player__avatar--photo" : "player__avatar";
     const text = hasImage ? "" : escapeHtml(initials(rec.player));
     return `<div class="${cls}" ${style}>${text}</div>`;
+  }
+
+  function buildLegacyBadge(player) {
+    const legacy = lookupLegacy(player.player);
+    if (!legacy) return "";
+    const title = legacy.highlights?.length ? legacy.highlights.join(" • ") : "Legacy impact";
+    const score = Math.round(legacy.score ?? 0);
+    return `
+      <div class="legacy-chip legacy-chip--${escapeHtml(legacy.tierKey || "prospect")}" title="${escapeHtml(title)}">
+        <span class="legacy-chip__tier">${escapeHtml(legacy.tier || "Legacy")}</span>
+        <span class="legacy-chip__score">${score}</span>
+      </div>
+    `;
   }
 
   function escapeHtml(s) {
