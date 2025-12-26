@@ -268,7 +268,7 @@
   }
 
   function initTabs() {
-    const navItems = Array.from(document.querySelectorAll(".nav__item"));
+    const navItems = Array.from(document.querySelectorAll(".nav__item[data-tab]"));
     const tabs = {
       win: document.getElementById("tab-win"),
       mvp: document.getElementById("tab-mvp"),
@@ -915,19 +915,12 @@
   
     const center = document.createElement("div");
     center.className = "schedule-game__pills";
-    center.style.marginLeft = "auto";
-    center.style.marginRight = "auto";
-    center.style.marginBottom = "5px";
-    center.style.marginTop = "5px";
-  
+    center.style.margin = "6px auto";
+
     const timePill = document.createElement("span");
     timePill.className = "pill pill--accent";
     timePill.textContent = missingTime ? "UNSCHEDULED" : rawTime;
-  
-    const divider = document.createElement("span");
-    divider.style.display = "inline-block";
-    divider.style.width = "10px";
-  
+
     const statusPill = document.createElement("span");
     statusPill.className = "pill";
     if (isFinal) statusPill.classList.add("pill--warning");
@@ -935,7 +928,6 @@
     statusPill.textContent = statusText;
 
     center.appendChild(timePill);
-    center.appendChild(divider);
     center.appendChild(statusPill);
 
     const previewLink = document.createElement("a");
