@@ -34,6 +34,9 @@
     playersByTeam: new Map(),
     scheduleGames: [],
     game: null,
+    legacy: null,
+    legacyStandingsLookup: new Map(),
+    legacyMap: null,
   };
 
   const els = {};
@@ -53,7 +56,7 @@
 
   async function loadData() {
     try {
-      await Promise.all([fetchMvp(), fetchSchedule()]);
+      await Promise.all([fetchMvp(), fetchSchedule(), fetchLegacy()]);
       resolveGameFromParams();
       renderPage();
     } catch (err) {
@@ -92,6 +95,18 @@
   async function fetchSchedule() {
     const text = await fetchText(SCHEDULE_CSV_URL);
     state.scheduleGames = parseScheduleCSV(text);
+  }
+
+  async function fetchLegacy() {
+    if (!window.Legacy?.loadLegacyData) return;
+    try {
+      const legacy = await window.Legacy.loadLegacyData();
+      state.legacy = legacy;
+      state.legacyMap = legacy?.legacyMap || null;
+      state.legacyStandingsLookup = buildStandingsLookup(legacy?.standings || []);
+    } catch (err) {
+      console.warn("[preview] Unable to load legacy data", err);
+    }
   }
 
   function resolveGameFromParams() {
@@ -302,6 +317,7 @@
   function buildTeamProfile(teamKey) {
     const standing = lookupStanding(state.standingsLookup, teamKey);
     const players = state.playersByTeam.get(teamKey) || [];
+    const allTime = lookupStanding(state.legacyStandingsLookup, teamKey);
     return {
       teamName: resolveTeam(teamKey).displayName,
       players,
@@ -309,6 +325,8 @@
       winPct: standing?.winPct ?? null,
       window: buildGameWindowStats(teamKey, 3),
       gamesPlayed: standing?.games ?? null,
+      allTime,
+      legacyImpact: computeLegacyImpact(players),
     };
   }
 
@@ -362,36 +380,54 @@
 
     const recencyCoverage = Math.min(((away.window.games || 0) + (home.window.games || 0)) / 6, 1);
     const scheduleCoverage = Math.min(((away.gamesPlayed || 0) + (home.gamesPlayed || 0)) / 10, 1);
-    const shrink = 0.35 * (1 - (recencyCoverage * 0.6 + scheduleCoverage * 0.4));
-    const probAway = 0.5 + (baseProbAway - 0.5) * (1 - shrink);
+    const historyCoverage = Math.min(((away.allTime?.games || 0) + (home.allTime?.games || 0)) / 40, 1);
+    const talentCoverage = Math.min(((away.players?.length || 0) + (home.players?.length || 0)) / 16, 1);
+    const shrink = 0.25 * (1 - (recencyCoverage * 0.4 + scheduleCoverage * 0.25 + historyCoverage * 0.25 + talentCoverage * 0.1));
+    const probAway = 0.5 + (baseProbAway - 0.5) * (1 - Math.max(0, shrink));
     const probHome = 1 - probAway;
 
     const confidence = Math.abs(probAway - 0.5);
     const tilt = probAway > 0.5 ? "Away lean" : probHome > 0.5 ? "Home lean" : "Dead even";
     const confidenceLabel =
-      confidence > 0.2 ? "High confidence — recent form and win% create separation." :
-      confidence > 0.1 ? "Moderate confidence — small edge from form and offense." :
-      "Low confidence — limited data or too close to call.";
+      confidence > 0.2
+        ? "High confidence — historical edge, standings, and player firepower align."
+        : confidence > 0.1
+        ? "Moderate confidence — slight edge from historical record and recent form."
+        : "Low confidence — thin sample or evenly matched.";
+
+    const coverageNote = historyCoverage < 0.35
+      ? "Limited all-time sample available."
+      : recencyCoverage < 0.35
+      ? "Recent form sample is light."
+      : "Using all-time standings plus current leaders.";
 
     return {
       awayPct: probAway,
       homePct: probHome,
-      note: `${tilt}. ${confidenceLabel}`,
+      note: `${tilt}. ${confidenceLabel} ${coverageNote}`,
     };
   }
 
   function teamStrength(profile) {
     const winScore = profile.winPct != null ? profile.winPct : 0.5;
+    const allTimeWin = profile.allTime?.winPct ?? winScore ?? 0.5;
+    const blendedWin = winScore * 0.65 + allTimeWin * 0.35;
+
     const margin = profile.window.avgMargin ?? 0;
     const marginScore = 0.5 + Math.tanh(margin / 18) / 2;
     const offenseScore = Math.min((profile.totals.offenseYards || 0) / 1800, 1);
     const recencyWeight = Math.min((profile.window.games || 0) / 3, 1);
-    return (
-      winScore * 0.55 +
-      marginScore * 0.25 * recencyWeight +
-      offenseScore * 0.15 +
-      0.05
-    );
+    const legacyWeight = profile.legacyImpact ?? 0;
+    const sampleDepth = Math.min((profile.allTime?.games || 0) / 50, 1);
+
+    const raw =
+      blendedWin * 0.5 +
+      marginScore * 0.2 * recencyWeight +
+      offenseScore * 0.12 +
+      legacyWeight * 0.12 +
+      sampleDepth * 0.06;
+
+    return Math.max(0.05, Math.min(0.95, raw));
   }
 
   function formatStatus(game) {
@@ -820,6 +856,21 @@
 
     totals.offenseYards = totals.passYards + totals.rushYards + totals.recvYards;
     return totals;
+  }
+
+  function computeLegacyImpact(players) {
+    if (!players?.length || !state.legacyMap || !window.Legacy?.normalizeName) return 0;
+    const normalize = window.Legacy.normalizeName;
+    const scores = players
+      .map((p) => state.legacyMap.get(normalize(p.player))?.score || 0)
+      .filter((score) => score > 0)
+      .sort((a, b) => b - a)
+      .slice(0, 3);
+
+    if (!scores.length) return 0;
+    const topScore = state.legacy?.leaderboard?.[0]?.score || 0;
+    const scaled = topScore ? scores.reduce((sum, val) => sum + val, 0) / (topScore * 2.5) : 0;
+    return Math.max(0, Math.min(1, scaled));
   }
 
   function buildGameSlug(game) {
