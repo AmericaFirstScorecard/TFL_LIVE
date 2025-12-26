@@ -476,7 +476,8 @@
       rec.image = rec.image || info.image || null;
     });
 
-    const standingsMap = buildStandingsLookup(standings);
+    const sortedStandings = sortStandings(standings);
+    const standingsMap = buildStandingsLookup(sortedStandings);
 
     const records = Array.from(players.values())
       .map((rec) => {
@@ -495,7 +496,7 @@
       })
       .filter((r) => r.player);
 
-    return { mvpRecords: records, standings, roster };
+    return { mvpRecords: records, standings: sortedStandings, roster };
   }
 
   function parsePassingSheet(workbook) {
@@ -603,18 +604,34 @@
     });
     if (!rows.length) return [];
 
-    return rows
-      .map((row) => ({
-        team: String(row.Team || row.team || "").trim(),
-        games: parseNumber(row.G) ?? null,
-        wins: parseNumber(row.W) ?? null,
-        draws: parseNumber(row.D) ?? null,
-        losses: parseNumber(row.L) ?? null,
-        plusMinus: parseNumber(row["+/-"]) ?? null,
-        points: parseNumber(row.P) ?? null,
-        winPct: parseNumber(row["Win%"]) ?? null,
-      }))
-      .filter((r) => r.team);
+    return sortStandings(
+      rows
+        .map((row) => ({
+          team: String(row.Team || row.team || "").trim(),
+          games: parseNumber(row.G) ?? null,
+          wins: parseNumber(row.W) ?? null,
+          draws: parseNumber(row.D) ?? null,
+          losses: parseNumber(row.L) ?? null,
+          plusMinus: parseNumber(row["+/-"]) ?? null,
+          points: parseNumber(row.P) ?? null,
+          winPct: parseNumber(row["Win%"]) ?? null,
+        }))
+        .filter((r) => r.team)
+    );
+  }
+
+  function sortStandings(rows) {
+    return [...(rows || [])].sort(compareStandings);
+  }
+
+  function compareStandings(a, b) {
+    return (
+      (b.points ?? -Infinity) - (a.points ?? -Infinity) ||
+      (b.winPct ?? -Infinity) - (a.winPct ?? -Infinity) ||
+      (b.wins ?? -Infinity) - (a.wins ?? -Infinity) ||
+      (b.plusMinus ?? -Infinity) - (a.plusMinus ?? -Infinity) ||
+      (a.team || "").localeCompare(b.team || "")
+    );
   }
 
   function buildStandingsLookup(rows) {

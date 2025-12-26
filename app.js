@@ -90,20 +90,6 @@
 
   const MVP_WEIGHTS = { pass: 2.0, rush: 1.0, recv: 1.0, def: 1.0, wins: 2 };
 
-  // Bracket copy for latest semi results
-  const SEMI_RESULTS = {
-    semi1: {
-      winnerTeam: "",
-      loserTeam: "",
-      score: "",
-    },
-    semi2: {
-      winnerTeam: "",
-      loserTeam: "",
-      score: "",
-    },
-  };
-
   // =======================
   // STATE / DOM
   // =======================
@@ -573,13 +559,14 @@
       state.mvpVersion = requestId;
       if (state.mvpAbortController === controller) state.mvpAbortController = null;
       state.lastMvpRecords = mvpRecords;
-      state.lastStandings = standings;
+      const sortedStandings = sortStandings(standings);
+      state.lastStandings = sortedStandings;
       state.rosterMap = roster;
       state.playersByTeam = buildPlayersByTeam(mvpRecords);
-      state.standingsLookup = buildStandingsLookup(standings);
+      state.standingsLookup = buildStandingsLookup(sortedStandings);
       renderMvp(mvpRecords);
-      renderStandings(standings);
-      renderBracket(standings);
+      renderStandings(sortedStandings);
+      renderBracket(sortedStandings);
       state.newsRecords = news;
       renderNews(news);
       if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
@@ -595,13 +582,14 @@
         if (state.mvpAbortController === controller) state.mvpAbortController = null;
         showError(els.mvpError, `MVP feed error: ${err.message}`);
         state.lastMvpRecords = buildSampleMvp();
-        state.lastStandings = buildSampleStandings();
+        const sampleStandings = sortStandings(buildSampleStandings());
+        state.lastStandings = sampleStandings;
         state.rosterMap = new Map();
         state.playersByTeam = buildPlayersByTeam(state.lastMvpRecords);
-        state.standingsLookup = buildStandingsLookup(state.lastStandings);
+        state.standingsLookup = buildStandingsLookup(sampleStandings);
         renderMvp(state.lastMvpRecords);
-        renderStandings(state.lastStandings);
-        renderBracket(state.lastStandings);
+        renderStandings(sampleStandings);
+        renderBracket(sampleStandings);
         state.newsRecords = buildSampleNews();
         renderNews(state.newsRecords);
         if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
@@ -1433,18 +1421,20 @@
     });
     if (!rows.length) return [];
 
-    return rows
-      .map((row) => ({
-        team: String(row.Team || row.team || "").trim(),
-        games: parseNumber(row.G) ?? null,
-        wins: parseNumber(row.W) ?? null,
-        draws: parseNumber(row.D) ?? null,
-        losses: parseNumber(row.L) ?? null,
-        plusMinus: parseNumber(row["+/-"]) ?? null,
-        points: parseNumber(row.P) ?? null,
-        winPct: parseNumber(row["Win%"]) ?? null,
-      }))
-      .filter((r) => r.team);
+    return sortStandings(
+      rows
+        .map((row) => ({
+          team: String(row.Team || row.team || "").trim(),
+          games: parseNumber(row.G) ?? null,
+          wins: parseNumber(row.W) ?? null,
+          draws: parseNumber(row.D) ?? null,
+          losses: parseNumber(row.L) ?? null,
+          plusMinus: parseNumber(row["+/-"]) ?? null,
+          points: parseNumber(row.P) ?? null,
+          winPct: parseNumber(row["Win%"]) ?? null,
+        }))
+        .filter((r) => r.team)
+    );
   }
 
   // =======================
@@ -1792,7 +1782,7 @@
     toggleError(els.standingsError, false);
 
     const frag = document.createDocumentFragment();
-    rows.forEach((row) => {
+    sortStandings(rows).forEach((row) => {
       const tr = document.createElement("tr");
       const teamInfo = resolveTeam(row.team);
       const teamKey = canonicalTeamKey(teamInfo.canonicalKey || teamInfo.displayName) || normalizeTeamKey(teamInfo.displayName);
@@ -2027,108 +2017,159 @@
     }
 
     const seeds = buildSeeds(rows);
-    const [seed1, seed2, seed3, seed4, seed5, seed6] = seeds;
+    const [seed1, seed2, seed3, seed4, seed5] = seeds;
 
-    const configuredSemiOneWinner = seedByTeam(seeds, SEMI_RESULTS.semi1.winnerTeam);
-    const configuredSemiOneLoser = seedByTeam(seeds, SEMI_RESULTS.semi1.loserTeam);
-    const configuredSemiTwoWinner = seedByTeam(seeds, SEMI_RESULTS.semi2.winnerTeam);
-    const configuredSemiTwoLoser = seedByTeam(seeds, SEMI_RESULTS.semi2.loserTeam);
-
-    const semiOneWinner = configuredSemiOneWinner || seed1;
-    const semiOneLoser = configuredSemiOneLoser || seed4;
-    const semiTwoWinner = configuredSemiTwoWinner || seed2;
-    const semiTwoLoser = configuredSemiTwoLoser || seed3;
-
-    const hasSemiOneResult = Boolean(configuredSemiOneWinner && configuredSemiOneLoser);
-    const hasSemiTwoResult = Boolean(configuredSemiTwoWinner && configuredSemiTwoLoser);
-
-    const semiOneScore = hasSemiOneResult ? SEMI_RESULTS.semi1.score : null;
-    const semiTwoScore = hasSemiTwoResult ? SEMI_RESULTS.semi2.score : null;
-
-    const semiOneResult = formatSemiResult(semiOneWinner, semiOneLoser, semiOneScore);
-    const semiTwoResult = formatSemiResult(semiTwoWinner, semiTwoLoser, semiTwoScore);
-
-    const bracketGrid = document.createElement("div");
-    bracketGrid.className = "bracket__grid";
-
-    const semiOne = buildSemiCard({
-      title: "Semifinal #1",
-      slot: "left",
-      topSeed: semiOneWinner,
-      lowerSeed: semiOneLoser,
-      winnerSeed: hasSemiOneResult ? semiOneWinner : null,
-      score: semiOneScore,
-      description: semiOneResult || "NOT FINALIZED",
-    });
-
-    const final = buildFinalCard({
-      title: "Tate Super Bowl",
-      leftSeed: hasSemiOneResult ? semiOneWinner : null,
-      rightSeed: hasSemiTwoResult ? semiTwoWinner : null,
-      awaitingLabelRight: seed2 && seed3 ? "" : "",
-      semiOneResult,
-      semiTwoResult,
-    });
-
-    const semiTwo = buildSemiCard({
-      title: "Semifinal #2",
-      slot: "right",
-      topSeed: semiTwoWinner,
-      lowerSeed: semiTwoLoser,
-      winnerSeed: hasSemiTwoResult ? semiTwoWinner : null,
-      score: semiTwoScore,
-      description: semiTwoResult || "NOT FINALIZED",
-    });
-
-    bracketGrid.appendChild(semiOne);
-    bracketGrid.appendChild(final);
-    bracketGrid.appendChild(semiTwo);
-    els.bracketDiagram.appendChild(bracketGrid);
-
-    const footer = document.createElement("div");
-    footer.className = "bracket__footer";
-    footer.appendChild(buildEliminationNotice(seed5, seed6));
-    if (semiOneResult) footer.appendChild(buildSemiRecap(semiOneWinner, semiOneLoser, semiOneScore, "Semi #1 result"));
-    if (semiTwoResult) footer.appendChild(buildSemiRecap(semiTwoWinner, semiTwoLoser, semiTwoScore, "Semi #2 result"));
-    els.bracketDiagram.appendChild(footer);
+    const bracket = document.createElement("div");
+    bracket.className = "bracket__stages";
+    bracket.appendChild(buildWildcardStage({ seed1, seed2, seed3, seed4, seed5 }));
+    bracket.appendChild(buildSemiStage({ seed1, seed2, seed3, seed4, seed5 }));
+    bracket.appendChild(buildFinalStage());
+    els.bracketDiagram.appendChild(bracket);
 
     if (els.bracketStatus) els.bracketStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
     toggleError(els.bracketError, false);
   }
 
-  function buildSemiCard({ title, slot, topSeed, lowerSeed, winnerSeed, score, description }) {
+  function buildStage(title, subtitle = "") {
+    const stage = document.createElement("div");
+    stage.className = "bracket__stage";
+    const header = document.createElement("div");
+    header.className = "bracket__stage-header";
+    const heading = document.createElement("div");
+    heading.className = "bracket__stage-title";
+    heading.textContent = title;
+    header.appendChild(heading);
+    if (subtitle) {
+      const sub = document.createElement("div");
+      sub.className = "bracket__stage-subtitle";
+      sub.textContent = subtitle;
+      header.appendChild(sub);
+    }
+    stage.appendChild(header);
+    return stage;
+  }
+
+  function buildWildcardStage({ seed1, seed2, seed3, seed4, seed5 }) {
+    const stage = buildStage("Wildcard Round", "Seeds ranked by points (P). Seeds 1-3 are on bye.");
+    const grid = document.createElement("div");
+    grid.className = "bracket__stage-grid bracket__stage-grid--wildcard";
+    grid.appendChild(buildByeCard(seed1, 1, "Bye to Semi One"));
+    grid.appendChild(buildByeCard(seed2, 2, "Bye to Semi Two"));
+    grid.appendChild(buildByeCard(seed3, 3, "Bye to Semi Two"));
+    grid.appendChild(
+      buildMatchCard({
+        title: "4 vs 5 Wildcard",
+        topSeed: seed4,
+        bottomSeed: seed5,
+        connectorLabel: "advances",
+        description: "Winner faces Seed #1 in Semi One",
+        topFallback: "Seed #4",
+        bottomFallback: "Seed #5",
+        topNote: seed4 ? "Wildcard matchup" : "",
+        bottomNote: seed5 ? "Wildcard matchup" : "",
+      })
+    );
+    stage.appendChild(grid);
+    return stage;
+  }
+
+  function buildSemiStage({ seed1, seed2, seed3, seed4, seed5 }) {
+    const stage = buildStage("Semi Finals", "Winners advance to the Tate Bowl");
+    const grid = document.createElement("div");
+    grid.className = "bracket__stage-grid bracket__stage-grid--semis";
+    grid.appendChild(
+      buildMatchCard({
+        title: "Semi One",
+        topSeed: seed1,
+        bottomSeed: null,
+        connectorLabel: "vs",
+        description: "1 vs (wildcard winner 4/5)",
+        topFallback: "Seed #1",
+        bottomFallback: seed4 && seed5 ? "Winner of 4/5" : "Awaiting wildcard winner",
+        bottomSeedLabel: seed4 && seed5 ? "Winner 4/5" : "Pending wildcard",
+        topNote: seed1 ? "Top seed bye" : "",
+        bottomNote: seed4 && seed5 ? "Advances from wildcard" : "",
+      })
+    );
+    grid.appendChild(
+      buildMatchCard({
+        title: "Semi Two",
+        topSeed: seed2,
+        bottomSeed: seed3,
+        connectorLabel: "vs",
+        description: "2 vs 3",
+        topFallback: "Seed #2",
+        bottomFallback: "Seed #3",
+        topNote: seed2 ? "Bye to semis" : "",
+        bottomNote: seed3 ? "Bye to semis" : "",
+      })
+    );
+    stage.appendChild(grid);
+    return stage;
+  }
+
+  function buildFinalStage() {
+    const stage = buildStage("Tate Bowl", "Semi One vs Semi Two");
+    const grid = document.createElement("div");
+    grid.className = "bracket__stage-grid bracket__stage-grid--final";
+    grid.appendChild(
+      buildMatchCard({
+        title: "Championship",
+        topSeed: null,
+        bottomSeed: null,
+        connectorLabel: "vs",
+        description: "Semi One winner vs Semi Two winner",
+        topFallback: "Winner of Semi One",
+        bottomFallback: "Winner of Semi Two",
+        topSeedLabel: "Semi One winner",
+        bottomSeedLabel: "Semi Two winner",
+        tone: "final",
+      })
+    );
+    stage.appendChild(grid);
+    return stage;
+  }
+
+  function buildMatchCard({
+    title,
+    topSeed,
+    bottomSeed,
+    connectorLabel = "vs",
+    description = "",
+    topFallback = "Awaiting seed",
+    bottomFallback = "Awaiting opponent",
+    topSeedLabel,
+    bottomSeedLabel,
+    topNote,
+    bottomNote,
+    tone,
+  }) {
     const card = document.createElement("div");
-    card.className = "bracket__round bracket__round--semi";
-    if (slot === "left") card.classList.add("bracket__round--semi-left");
-    if (slot === "right") card.classList.add("bracket__round--semi-right");
+    card.className = "bracket__round";
+    if (tone) card.classList.add(`bracket__round--${tone}`);
     card.innerHTML = `<div class="bracket__round-title">${title}</div>`;
 
     const matchup = document.createElement("div");
     matchup.className = "bracket__matchup";
 
-    const winnerSeedId = winnerSeed?.seed;
     matchup.appendChild(
       seedChip(topSeed, {
-        fallbackLabel: slot === "left" ? "Seed #1" : "Seed #2",
-        status: winnerSeedId && winnerSeedId === topSeed?.seed ? "winner" : "pending",
-        note: winnerSeedId && winnerSeedId === topSeed?.seed ? "Advanced" : "Awaiting kickoff",
+        fallbackLabel: topFallback,
+        seedLabel: topSeedLabel,
+        note: topNote || (topSeed ? `Seed #${topSeed.seed}` : ""),
       })
     );
 
     const connector = document.createElement("div");
     connector.className = "bracket__connector";
-    connector.textContent = score || "vs";
+    connector.textContent = connectorLabel;
     matchup.appendChild(connector);
 
     matchup.appendChild(
-      seedChip(lowerSeed, {
-        fallbackLabel: slot === "left" ? "Seed #4" : "Seed #3",
-        status: winnerSeedId ? (winnerSeedId === lowerSeed?.seed ? "winner" : "eliminated") : "pending",
-        note: winnerSeedId
-          ? winnerSeedId === lowerSeed?.seed
-            ? "Advanced"
-            : "Eliminated"
-          : "Awaiting kickoff",
+      seedChip(bottomSeed, {
+        fallbackLabel: bottomFallback,
+        seedLabel: bottomSeedLabel,
+        note: bottomNote || (bottomSeed ? `Seed #${bottomSeed.seed}` : ""),
       })
     );
 
@@ -2144,107 +2185,27 @@
     return card;
   }
 
-  function buildFinalCard({ title, leftSeed, rightSeed, awaitingLabelRight, semiOneResult, semiTwoResult }) {
+  function buildByeCard(seed, seedNumber, note = "") {
     const card = document.createElement("div");
-    card.className = "bracket__round bracket__round--final";
-    card.innerHTML = `<div class="bracket__round-title">${title}</div>`;
-
-    const matchup = document.createElement("div");
-    matchup.className = "bracket__matchup bracket__matchup--final";
-
-    const leftAdvanced = Boolean(leftSeed && semiOneResult);
-    const rightAdvanced = Boolean(rightSeed && (semiTwoResult || semiOneResult));
-    matchup.appendChild(
-      seedChip(leftSeed, {
-        fallbackLabel: "Seed #1",
-        status: leftAdvanced ? "winner" : "pending",
-        note: leftAdvanced ? "Advanced from Semi #1" : "Awaiting #1/#4 winner",
+    card.className = "bracket__round bracket__round--bye";
+    const title = document.createElement("div");
+    title.className = "bracket__round-title";
+    title.textContent = `Seed #${seed?.seed || seedNumber} Bye`;
+    card.appendChild(title);
+    card.appendChild(
+      seedChip(seed, {
+        fallbackLabel: `Seed #${seedNumber} bye spot`,
+        seedLabel: `Seed #${seedNumber}`,
+        note: note || "Bye week",
       })
     );
-
-    const connector = document.createElement("div");
-    connector.className = "bracket__connector bracket__connector--final";
-    connector.textContent = "vs";
-    matchup.appendChild(connector);
-
-    matchup.appendChild(
-      seedChip(rightSeed, {
-        fallbackLabel: awaitingLabelRight || "Awaiting opponent",
-        status: rightAdvanced ? "winner" : "pending",
-        seedLabel: awaitingLabelRight || "Awaiting opponent",
-        note: rightAdvanced ? "Advanced from Semi #2" : awaitingLabelRight || "Awaiting opponent",
-      })
-    );
-
-    card.appendChild(matchup);
-    if (semiOneResult || semiTwoResult) {
-      const note = document.createElement("div");
-      note.className = "bracket__note";
-      const notes = [];
-      if (semiOneResult) notes.push(`Semi #1: ${semiOneResult}`);
-      if (semiTwoResult) notes.push(`Semi #2: ${semiTwoResult}`);
-      note.textContent = notes.join(" • ");
-      card.appendChild(note);
+    if (note) {
+      const desc = document.createElement("div");
+      desc.className = "bracket__note";
+      desc.textContent = note;
+      card.appendChild(desc);
     }
     return card;
-  }
-
-  function buildEliminationNotice(seed5, seed6) {
-    const eliminated = document.createElement("div");
-    eliminated.className = "bracket__eliminated";
-    const eliminatedSeeds = [];
-    if (seed5) eliminatedSeeds.push(`Seed ${seed5.seed} (${resolveTeam(seed5.team).displayName})`);
-    if (seed6) eliminatedSeeds.push(`Seed ${seed6.seed} (${resolveTeam(seed6.team).displayName})`);
-
-    eliminated.textContent =
-      eliminatedSeeds.length > 0
-        ? `${eliminatedSeeds.join(" and ")} ${eliminatedSeeds.length > 1 ? "were" : "was"} eliminated`
-        : "Waiting on updated seeds…";
-    return eliminated;
-  }
-
-  function buildSemiRecap(winnerSeed, loserSeed, score, label = "Semi result") {
-    const recap = document.createElement("div");
-    recap.className = "bracket__summary";
-    const title = document.createElement("div");
-    title.className = "bracket__summary-title";
-    title.textContent = label;
-    recap.appendChild(title);
-
-    const body = document.createElement("div");
-    body.className = "bracket__summary-body";
-    body.appendChild(
-      seedChip(winnerSeed, {
-        fallbackLabel: "Winner",
-        status: "winner",
-        note: "Into Tate Bowl",
-      })
-    );
-    body.appendChild(buildScoreBadge(score));
-    body.appendChild(
-      seedChip(loserSeed, {
-        fallbackLabel: "Loser",
-        status: "eliminated",
-        note: "Eliminated",
-      })
-    );
-
-    recap.appendChild(body);
-    return recap;
-  }
-
-  function buildScoreBadge(score) {
-    const badge = document.createElement("div");
-    badge.className = "bracket__score-badge";
-    badge.textContent = score || "vs";
-    return badge;
-  }
-
-  function formatSemiResult(winnerSeed, loserSeed, score) {
-    if (!winnerSeed || !loserSeed || !score) return null;
-    const winner = resolveTeam(winnerSeed.team).displayName;
-    const loser = resolveTeam(loserSeed.team).displayName;
-    return `${winner} defeated ${loser} ${score}`;
   }
 
   function seedChip(seed, options = {}) {
@@ -3084,11 +3045,24 @@
 
   function buildSeeds(rows) {
     if (!rows?.length) return [];
-    return [...rows]
+    return sortStandings(rows)
       .filter((row) => row.team)
-      .sort((a, b) => (b.points ?? 0) - (a.points ?? 0) || (b.winPct ?? 0) - (a.winPct ?? 0) || (b.wins ?? 0) - (a.wins ?? 0))
-      .slice(0, 6)
+      .slice(0, 5)
       .map((row, idx) => ({ ...row, seed: idx + 1 }));
+  }
+
+  function sortStandings(rows) {
+    return [...(rows || [])].sort(compareStandings);
+  }
+
+  function compareStandings(a, b) {
+    return (
+      (b.points ?? -Infinity) - (a.points ?? -Infinity) ||
+      (b.winPct ?? -Infinity) - (a.winPct ?? -Infinity) ||
+      (b.wins ?? -Infinity) - (a.wins ?? -Infinity) ||
+      (b.plusMinus ?? -Infinity) - (a.plusMinus ?? -Infinity) ||
+      (a.team || "").localeCompare(b.team || "")
+    );
   }
 
   function seedByTeam(seeds, teamKey) {
