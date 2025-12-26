@@ -292,6 +292,12 @@
         meta.appendChild(resultPill);
       }
 
+      const previewLink = document.createElement("a");
+      previewLink.className = "team-pill";
+      previewLink.href = gamePreviewUrl(game);
+      previewLink.textContent = "Preview";
+      meta.appendChild(previewLink);
+
       card.appendChild(matchup);
       card.appendChild(meta);
       frag.appendChild(card);
@@ -480,6 +486,11 @@
         const away = String(pick(r, ["team away", "away", "away team", "team_away"])).trim();
         const home = String(pick(r, ["team home", "home", "home team", "team_home"])).trim();
 
+        const gameCodeRaw = String(pick(r, ["game code", "gamecode", "code"]))
+          .trim()
+          .replace(/\s+/g, " ");
+        const gameCode = normalizeGameCode(gameCodeRaw) || (gameCodeRaw || null);
+
         const completeCell = String(
           pick(r, [
             "game complete (yes, no, live)",
@@ -513,6 +524,8 @@
           week,
           away,
           home,
+          gameCode,
+          gameCodeRaw,
           complete,
           startTime,
           scoreHome,
@@ -520,6 +533,23 @@
         };
       })
       .filter(Boolean);
+  }
+
+  function buildGameSlug(game) {
+    const parts = [
+      "week",
+      game?.week ?? "",
+      normalizeTeamKey(game?.away || ""),
+      "vs",
+      normalizeTeamKey(game?.home || ""),
+    ].filter(Boolean);
+    return parts.join("-");
+  }
+
+  function gamePreviewUrl(game) {
+    const code = normalizeGameCode(game?.gameCode || game?.gameCodeRaw);
+    if (code) return `preview.html?game=${encodeURIComponent(code)}`;
+    return `preview.html?game=${encodeURIComponent(buildGameSlug(game))}`;
   }
 
   function parseMvpWorkbook(buffer) {
@@ -877,6 +907,14 @@
       map[info.logo.toLowerCase()] = file;
     });
     return map;
+  }
+
+  function normalizeGameCode(raw) {
+    const str = String(raw ?? "").trim();
+    if (!str) return null;
+    const match = str.match(/#?\s*([\d]+)/);
+    if (match) return `#${match[1]}`;
+    return str.startsWith("#") ? str : `#${str}`;
   }
 
   function canonicalTeamKey(raw) {

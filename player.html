@@ -54,7 +54,22 @@
     <section class="panel">
       <div class="team-section__title">Historical stats</div>
       <div class="team-section__subtitle">Multi-season view</div>
-      <div class="state">COMING SOON</div>
+      <div class="table-container">
+        <table class="table table--compact" id="playerHistoryTable">
+          <thead>
+            <tr>
+              <th>Season</th>
+              <th>Team</th>
+              <th>Passing</th>
+              <th>Rushing</th>
+              <th>Receiving</th>
+              <th>Defense</th>
+            </tr>
+          </thead>
+          <tbody id="playerHistoryBody"></tbody>
+        </table>
+      </div>
+      <div class="state state--empty" id="playerHistoryEmpty" hidden>No history available yet.</div>
     </section>
 
     <div class="team-error" id="playerError" hidden>Unable to load player data.</div>

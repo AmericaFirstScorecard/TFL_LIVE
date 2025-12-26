@@ -5,6 +5,9 @@
   const SCHEDULE_CSV_URL =
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vRXwm2d_zRf_4ecp0Czfmd5IRz92bzXLmQ3aY0X0aJ56Ua_vQjMrB2I7yCLYgLR48wLwDuGfjURL6jN/pub?gid=0&single=true&output=csv";
 
+  const SEASON_WORKBOOK_URL =
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vQfDvxdXmvl9dMNWi6x5y3XMyl-FjZ6wTdwpP-ZfKTlUyS_FUgRqpGeQs05wAtI1JVnRGzrenQqW6OR/pub?output=xlsx";
+
   const TEAM_CODE_MAP = {
     "0": { name: "Louisville Cardinals", logo: "cards" },
     "1": { name: "Dallas Cowboys", logo: "cowboys" },
@@ -39,6 +42,7 @@
     scheduleGames: [],
     teamInfo: null,
     teamKey: "",
+    seasonStats: { seasons: new Map(), allTime: new Map(), order: [] },
   };
 
   const els = {};
@@ -60,7 +64,7 @@
 
   async function loadData() {
     try {
-      await Promise.all([fetchMvp(), fetchSchedule()]);
+      await Promise.all([fetchMvp(), fetchSchedule(), fetchSeasonStats()]);
       resolvePlayer();
       renderPage();
     } catch (err) {
@@ -81,6 +85,8 @@
     els.playerScheduleEmpty = document.getElementById("playerScheduleEmpty");
     els.playerError = document.getElementById("playerError");
     els.playerBackLink = document.getElementById("playerBackLink");
+    els.playerHistoryBody = document.getElementById("playerHistoryBody");
+    els.playerHistoryEmpty = document.getElementById("playerHistoryEmpty");
   }
 
   async function fetchArrayBuffer(url) {
@@ -115,6 +121,11 @@
     state.scheduleGames = parseScheduleCSV(text);
   }
 
+  async function fetchSeasonStats() {
+    const buffer = await fetchArrayBuffer(SEASON_WORKBOOK_URL);
+    state.seasonStats = parseSeasonWorkbook(buffer);
+  }
+
   function resolvePlayer() {
     const target = normalizeTeamKey(state.playerName);
     state.playerRecord =
@@ -134,6 +145,7 @@
     renderHero();
     renderHardware();
     renderStats();
+    renderHistoricalStats();
     renderSchedule(state.scheduleGames);
   }
 
@@ -223,6 +235,55 @@
     });
 
     els.playerStats.appendChild(frag);
+  }
+
+  function renderHistoricalStats() {
+    if (!els.playerHistoryBody) return;
+    els.playerHistoryBody.innerHTML = "";
+
+    const history = findPlayerSeasonHistory(state.playerRecord?.player || state.playerName);
+    if (!history.length) {
+      if (els.playerHistoryEmpty) els.playerHistoryEmpty.hidden = false;
+      return;
+    }
+    if (els.playerHistoryEmpty) els.playerHistoryEmpty.hidden = true;
+
+    const frag = document.createDocumentFragment();
+    history.forEach((row) => {
+      const tr = document.createElement("tr");
+      if (row.kind === "all-time") tr.className = "table__row--accent";
+
+      const seasonCell = document.createElement("td");
+      seasonCell.innerHTML =
+        row.kind === "all-time"
+          ? `<span class="table__pill">All time</span>`
+          : escapeHtml(row.season);
+      tr.appendChild(seasonCell);
+
+      const teamCell = document.createElement("td");
+      teamCell.textContent = row.team || state.teamInfo?.displayName || "—";
+      tr.appendChild(teamCell);
+
+      const passCell = document.createElement("td");
+      passCell.textContent = formatSeasonPassing(row);
+      tr.appendChild(passCell);
+
+      const rushCell = document.createElement("td");
+      rushCell.textContent = formatSeasonRushing(row);
+      tr.appendChild(rushCell);
+
+      const recvCell = document.createElement("td");
+      recvCell.textContent = formatSeasonReceiving(row);
+      tr.appendChild(recvCell);
+
+      const defCell = document.createElement("td");
+      defCell.textContent = formatSeasonDefense(row);
+      tr.appendChild(defCell);
+
+      frag.appendChild(tr);
+    });
+
+    els.playerHistoryBody.appendChild(frag);
   }
 
   function renderSchedule(games) {
@@ -401,6 +462,108 @@
         };
       })
       .filter(Boolean);
+  }
+
+  function parseSeasonWorkbook(buffer) {
+    if (typeof XLSX === "undefined") throw new Error("XLSX missing");
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const seasons = new Map();
+    const allTime = new Map();
+    const order = [];
+
+    workbook.SheetNames.forEach((sheetName) => {
+      const seasonLabel = String(sheetName || "").trim();
+      if (!seasonLabel) return;
+      const entries = parseSeasonSheet(workbook, sheetName, seasonLabel);
+      if (!entries.length) return;
+
+      if (/all\s*time/i.test(seasonLabel)) {
+        entries.forEach((entry) => {
+          const key = normalizePlayerKey(entry.player);
+          if (!key) return;
+          allTime.set(key, entry);
+        });
+      } else {
+        const normSeason = seasonLabel;
+        if (!seasons.has(normSeason)) {
+          seasons.set(normSeason, []);
+          order.push(normSeason);
+        }
+        seasons.get(normSeason).push(...entries);
+      }
+    });
+
+    const sortedOrder = [...order].sort((a, b) => parseSeasonNumber(b) - parseSeasonNumber(a));
+    return { seasons, allTime, order: sortedOrder };
+  }
+
+  function parseSeasonSheet(workbook, sheetName, seasonLabel) {
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+    if (!rows || !rows.length) return [];
+
+    return rows
+      .map((row) => {
+        const player = String(row.Player || row.player || "").trim();
+        if (!player) return null;
+        return {
+          season: seasonLabel,
+          player,
+          team: String(row.Team || row.team || "").trim(),
+          completions: parseNumber(row.Completions),
+          attempts: parseNumber(row.Attempts),
+          compPct: parseNumber(row["Completion %"]),
+          passYards: parseNumber(row["Passing Yards"]),
+          passTd: parseNumber(row["Passing TD"]),
+          interceptions: parseNumber(row.INT),
+          tdToInt: parseNumber(row["TD/INT"]),
+          passRating: parseNumber(row["Passer Rating"]),
+          rushYards: parseNumber(row["Rushing Yards"]),
+          rushTd: parseNumber(row["Rushing TD"]),
+          returnTd: parseNumber(row["Return TD"]),
+          totalTd: parseNumber(row["Total TD"]),
+          catches: parseNumber(row.Catchs),
+          targets: parseNumber(row.Targets),
+          catchPct: parseNumber(row["Calc Catch%"]),
+          recvYards: parseNumber(row["Receiving Yards"]),
+          recvTd: parseNumber(row["Receiving TD"]),
+          yardsPerCatch: parseNumber(row["Yards/Catch"]),
+          tackles: parseNumber(row.Tackles),
+          defInt: parseNumber(row["INT.1"]),
+          sacks: parseNumber(row.Sacks),
+          defTd: parseNumber(row["Def TD"]),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function parseSeasonNumber(label) {
+    const match = String(label || "").match(/(\d+)/);
+    return match ? parseInt(match[1], 10) : 0;
+  }
+
+  function normalizePlayerKey(name) {
+    return String(name || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "");
+  }
+
+  function findPlayerSeasonHistory(playerName) {
+    const key = normalizePlayerKey(playerName);
+    if (!key) return [];
+    const records = [];
+
+    const allTime = state.seasonStats.allTime.get(key);
+    if (allTime) records.push({ ...allTime, kind: "all-time" });
+
+    (state.seasonStats.order || []).forEach((season) => {
+      const seasonRows = state.seasonStats.seasons.get(season) || [];
+      const match =
+        seasonRows.find((row) => normalizePlayerKey(row.player) === key) ||
+        seasonRows.find((row) => normalizePlayerKey(row.player).includes(key));
+      if (match) records.push({ ...match, kind: "season" });
+    });
+
+    return records;
   }
 
   function parseMvpWorkbook(buffer) {
@@ -718,6 +881,46 @@
       { label: "Def", value: joinStatParts(defParts) },
       ...(totals.length ? [{ label: "Totals", value: joinStatParts(totals) }] : []),
     ].filter((line) => line.value && line.value !== "—");
+  }
+
+  function formatSeasonPassing(row) {
+    const parts = [];
+    appendIfValue(parts, `${formatCount(row.completions)} / ${formatCount(row.attempts)} C/A`);
+    appendIfValue(parts, `Comp ${formatPct(row.compPct)}`);
+    appendIfValue(parts, `${formatCount(row.passYards)} yds`);
+    if (row.passTd != null || row.interceptions != null)
+      appendIfValue(parts, `${formatCount(row.passTd)} TD / ${formatCount(row.interceptions)} INT`);
+    appendIfValue(parts, `PR ${formatScore(row.passRating)}`);
+    return joinStatParts(parts);
+  }
+
+  function formatSeasonRushing(row) {
+    const parts = [];
+    appendIfValue(parts, `${formatCount(row.rushYards)} yds`);
+    appendIfValue(parts, `${formatCount(row.rushTd)} TD`);
+    appendIfValue(parts, `${formatCount(row.returnTd)} RET TD`);
+    appendIfValue(parts, `${formatCount(row.totalTd)} Total TD`);
+    return joinStatParts(parts);
+  }
+
+  function formatSeasonReceiving(row) {
+    const parts = [];
+    appendIfValue(parts, `${formatCount(row.recvYards)} yds`);
+    appendIfValue(parts, `${formatCount(row.recvTd)} TD`);
+    if (row.catches != null || row.targets != null)
+      appendIfValue(parts, `${formatCount(row.catches)} / ${formatCount(row.targets)} C/T`);
+    appendIfValue(parts, `Catch% ${formatPct(row.catchPct)}`);
+    appendIfValue(parts, `${formatScore(row.yardsPerCatch)} Y/C`);
+    return joinStatParts(parts);
+  }
+
+  function formatSeasonDefense(row) {
+    const parts = [];
+    appendIfValue(parts, `${formatCount(row.tackles)} TAK`);
+    appendIfValue(parts, `${formatCount(row.defInt)} INT`);
+    appendIfValue(parts, `${formatCount(row.sacks)} SCK`);
+    appendIfValue(parts, `${formatCount(row.defTd)} TD`);
+    return joinStatParts(parts);
   }
 
   function appendIfValue(list, value) {

@@ -938,6 +938,12 @@
     center.appendChild(divider);
     center.appendChild(statusPill);
 
+    const previewLink = document.createElement("a");
+    previewLink.className = "pill schedule-game__detail";
+    previewLink.href = gamePreviewUrl(game);
+    previewLink.textContent = "PREVIEW";
+    center.appendChild(previewLink);
+
     if (isFinal && hasDetails) {
       const detailBtn = document.createElement("button");
       detailBtn.type = "button";
@@ -3277,6 +3283,23 @@
     const match = str.match(/#?\s*([\d]+)/);
     if (match) return `#${match[1]}`;
     return str.startsWith("#") ? str : `#${str}`;
+  }
+
+  function buildGameSlug(game) {
+    const parts = [
+      "week",
+      game?.week ?? "",
+      normalizeTeamKey(game?.away || ""),
+      "vs",
+      normalizeTeamKey(game?.home || ""),
+    ].filter(Boolean);
+    return parts.join("-");
+  }
+
+  function gamePreviewUrl(game) {
+    const code = normalizeGameCode(game?.gameCode || game?.gameCodeRaw);
+    if (code) return `preview.html?game=${encodeURIComponent(code)}`;
+    return `preview.html?game=${encodeURIComponent(buildGameSlug(game))}`;
   }
 
   function compareGameCodes(a, b) {
