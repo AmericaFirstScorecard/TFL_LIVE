@@ -29,7 +29,7 @@
       name: "Yankdix",
       description: "Yankee Dixie Rivarly Trophy",
       image: "hardware/yankdix.png",
-      recipients: ["New England Patriots"],
+      recipients: [{type: "team", id: "New England Patriots", display: "New England Patriots"}],
     },
   ];
 
