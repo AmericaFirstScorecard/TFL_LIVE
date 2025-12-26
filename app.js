@@ -1664,11 +1664,17 @@
 
     const parseTeamStats = (row, prev = {}) => {
       const withFallback = (val, key) => (val != null ? val : prev[key] ?? null);
-      const parseConversion = (made, att, combined) => {
-        if (combined != null && combined !== "") return String(combined);
-        if (made == null && att == null) return null;
-        if (att == null) return `${made ?? 0}`;
-        return `${made ?? 0}/${att}`;
+      const conversion = (madeRaw, attRaw, combinedRaw, madeKey, attKey, convKey) => {
+        const parsedPair = parseAttemptPair(combinedRaw);
+        const madeVal = withFallback(parseNumber(madeRaw ?? parsedPair?.made), madeKey);
+        const attVal = withFallback(parseNumber(attRaw ?? parsedPair?.att), attKey);
+        let combinedVal = combinedRaw ?? parsedPair?.combined;
+        if (!combinedVal && madeVal != null && attVal != null) combinedVal = `${madeVal}/${attVal}`;
+        return {
+          made: madeVal,
+          att: attVal,
+          combined: withFallback(combinedVal, convKey),
+        };
       };
 
       const totalYardsA = withFallback(
@@ -1682,15 +1688,44 @@
       const firstDownsA = withFallback(parseNumber(pick(row, ["team a first downs", "first downs a"])), "firstDownsA");
       const firstDownsB = withFallback(parseNumber(pick(row, ["team b first downs", "first downs b"])), "firstDownsB");
 
-      const thirdMadeA = parseNumber(pick(row, ["team a 3rd made", "team a third made", "team a 3rd conversions"]));
-      const thirdAttA = parseNumber(pick(row, ["team a 3rd att", "team a third att", "team a 3rd attempts"]));
-      const thirdMadeB = parseNumber(pick(row, ["team b 3rd made", "team b third made", "team b 3rd conversions"]));
-      const thirdAttB = parseNumber(pick(row, ["team b 3rd att", "team b third att", "team b 3rd attempts"]));
+      const thirdA = conversion(
+        pick(row, ["team a 3rd made", "team a third made", "team a 3rd conversions"]),
+        pick(row, ["team a 3rd att", "team a third att", "team a 3rd attempts"]),
+        pick(row, ["team a 3rd conv", "team a third conv"]),
+        "thirdMadeA",
+        "thirdAttA",
+        "thirdConvA"
+      );
+      const thirdB = conversion(
+        pick(row, ["team b 3rd made", "team b third made", "team b 3rd conversions"]),
+        pick(row, ["team b 3rd att", "team b third att", "team b 3rd attempts"]),
+        pick(row, ["team b 3rd conv", "team b third conv"]),
+        "thirdMadeB",
+        "thirdAttB",
+        "thirdConvB"
+      );
 
-      const fourthMadeA = parseNumber(pick(row, ["team a 4th made", "team a fourth made", "team a 4th conversions"]));
-      const fourthAttA = parseNumber(pick(row, ["team a 4th att", "team a fourth att", "team a 4th attempts"]));
-      const fourthMadeB = parseNumber(pick(row, ["team b 4th made", "team b fourth made", "team b 4th conversions"]));
-      const fourthAttB = parseNumber(pick(row, ["team b 4th att", "team b fourth att", "team b 4th attempts"]));
+      const fourthA = conversion(
+        pick(row, ["team a 4th made", "team a fourth made", "team a 4th conversions"]),
+        pick(row, ["team a 4th att", "team a fourth att", "team a 4th attempts"]),
+        pick(row, ["team a 4th conv", "team a fourth conv"]),
+        "fourthMadeA",
+        "fourthAttA",
+        "fourthConvA"
+      );
+      const fourthB = conversion(
+        pick(row, ["team b 4th made", "team b fourth made", "team b 4th conversions"]),
+        pick(row, ["team b 4th att", "team b fourth att", "team b 4th attempts"]),
+        pick(row, ["team b 4th conv", "team b fourth conv"]),
+        "fourthMadeB",
+        "fourthAttB",
+        "fourthConvB"
+      );
+
+      const redZoneAInput = pick(row, ["team a redzone", "red zone a", "rza"]);
+      const redZoneBInput = pick(row, ["team b redzone", "red zone b", "rzb"]);
+      const redA = conversion(null, null, redZoneAInput, "redZoneMadeA", "redZoneAttA", "redZoneA");
+      const redB = conversion(null, null, redZoneBInput, "redZoneMadeB", "redZoneAttB", "redZoneB");
 
       const turnoversA = withFallback(parseNumber(pick(row, ["team a turnovers", "turnovers a", "giveaways a"])), "turnoversA");
       const turnoversB = withFallback(parseNumber(pick(row, ["team b turnovers", "turnovers b", "giveaways b"])), "turnoversB");
@@ -1704,22 +1739,19 @@
       const yardsPerPlayA = withFallback(parseNumber(pick(row, ["yards per play a", "team a ypp"])), "yardsPerPlayA");
       const yardsPerPlayB = withFallback(parseNumber(pick(row, ["yards per play b", "team b ypp"])), "yardsPerPlayB");
 
-      const redZoneA = withFallback(pick(row, ["team a redzone", "red zone a", "rza"]), "redZoneA");
-      const redZoneB = withFallback(pick(row, ["team b redzone", "red zone b", "rzb"]), "redZoneB");
-
       return {
         totalYardsA,
         totalYardsB,
         firstDownsA,
         firstDownsB,
-        thirdMadeA: withFallback(thirdMadeA, "thirdMadeA"),
-        thirdAttA: withFallback(thirdAttA, "thirdAttA"),
-        thirdMadeB: withFallback(thirdMadeB, "thirdMadeB"),
-        thirdAttB: withFallback(thirdAttB, "thirdAttB"),
-        fourthMadeA: withFallback(fourthMadeA, "fourthMadeA"),
-        fourthAttA: withFallback(fourthAttA, "fourthAttA"),
-        fourthMadeB: withFallback(fourthMadeB, "fourthMadeB"),
-        fourthAttB: withFallback(fourthAttB, "fourthAttB"),
+        thirdMadeA: thirdA.made,
+        thirdAttA: thirdA.att,
+        thirdMadeB: thirdB.made,
+        thirdAttB: thirdB.att,
+        fourthMadeA: fourthA.made,
+        fourthAttA: fourthA.att,
+        fourthMadeB: fourthB.made,
+        fourthAttB: fourthB.att,
         turnoversA,
         turnoversB,
         penaltiesA,
@@ -1728,12 +1760,16 @@
         topB,
         yardsPerPlayA,
         yardsPerPlayB,
-        redZoneA,
-        redZoneB,
-        thirdConvA: withFallback(parseConversion(thirdMadeA, thirdAttA, pick(row, ["team a 3rd conv", "team a third conv"])), "thirdConvA"),
-        thirdConvB: withFallback(parseConversion(thirdMadeB, thirdAttB, pick(row, ["team b 3rd conv", "team b third conv"])), "thirdConvB"),
-        fourthConvA: withFallback(parseConversion(fourthMadeA, fourthAttA, pick(row, ["team a 4th conv", "team a fourth conv"])), "fourthConvA"),
-        fourthConvB: withFallback(parseConversion(fourthMadeB, fourthAttB, pick(row, ["team b 4th conv", "team b fourth conv"])), "fourthConvB"),
+        redZoneA: redA.combined,
+        redZoneB: redB.combined,
+        redZoneMadeA: redA.made,
+        redZoneAttA: redA.att,
+        redZoneMadeB: redB.made,
+        redZoneAttB: redB.att,
+        thirdConvA: thirdA.combined,
+        thirdConvB: thirdB.combined,
+        fourthConvA: fourthA.combined,
+        fourthConvB: fourthB.combined,
       };
     };
 
@@ -3231,8 +3267,8 @@
       },
       {
         label: "Red zone",
-        a: formatConversionDisplay(teamStats.redZoneA, null, null),
-        b: formatConversionDisplay(teamStats.redZoneB, null, null),
+        a: formatConversionDisplay(teamStats.redZoneA, teamStats.redZoneMadeA, teamStats.redZoneAttA),
+        b: formatConversionDisplay(teamStats.redZoneB, teamStats.redZoneMadeB, teamStats.redZoneAttB),
       },
     ];
 
@@ -3712,6 +3748,17 @@
     return Number.isNaN(num) ? null : num;
   }
 
+  function parseAttemptPair(value) {
+    if (value == null || value === "") return null;
+    const str = String(value).trim();
+    const match = str.match(/(-?\d+(?:\.\d+)?)\s*[\\/-]\s*(-?\d+(?:\.\d+)?)/);
+    if (!match) return null;
+    const made = parseNumber(match[1]);
+    const att = parseNumber(match[2]);
+    if (made == null && att == null) return null;
+    return { made, att, combined: `${made ?? 0}/${att ?? 0}` };
+  }
+
   function forceNumberOrNull(v) {
     if (v == null) return null;
     const n = typeof v === "number" ? v : parseFloat(v);
@@ -3762,10 +3809,21 @@
   }
 
   function formatConversionDisplay(combined, made, att) {
-    if (combined != null && combined !== "") return combined;
-    if (made == null && att == null) return "—";
-    if (att == null) return `${made ?? 0}`;
-    return `${made ?? 0}/${att}`;
+    const parsed = parseAttemptPair(combined);
+    const madeVal = Number.isFinite(made) ? made : parsed?.made;
+    const attVal = Number.isFinite(att) ? att : parsed?.att;
+    let base = combined || parsed?.combined || "";
+
+    if (!base && madeVal != null && attVal != null) base = `${madeVal}/${attVal}`;
+    if (!base && madeVal != null && attVal == null) base = `${madeVal}`;
+    if (!base) return "—";
+
+    if (attVal != null && attVal > 0 && madeVal != null) {
+      const pct = ((madeVal / attVal) * 100).toFixed(1);
+      return `${base} (${pct}%)`;
+    }
+
+    return base;
   }
 
   function initials(name) {

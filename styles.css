@@ -819,19 +819,25 @@ body {
   line-height: 1.4;
 }
 
+.predictor-card {
+  overflow: hidden;
+}
+
 .predictor {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 16px;
-  align-items: center;
+  align-items: stretch;
 }
 
 .predictor__ring {
   --pct-away-deg: calc(var(--pct-away) * 3.6deg);
   --pct-home-deg: calc(360deg - var(--pct-away-deg));
   position: relative;
-  width: 180px;
-  height: 180px;
+  width: 190px;
+  height: 190px;
+  margin: 4px auto;
+  isolation: isolate;
 }
 
 .predictor__ring-track,
@@ -843,7 +849,7 @@ body {
 
 .predictor__ring-track {
   background: conic-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.12));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 15px 40px rgba(0, 0, 0, 0.45);
 }
 
 .predictor__ring-fill {
@@ -854,6 +860,15 @@ body {
     rgba(248, 113, 113, 0.9) 360deg
   );
   mask: radial-gradient(circle at center, transparent 62px, black 64px);
+}
+
+.predictor__ring::after {
+  content: "";
+  position: absolute;
+  inset: 14%;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.1));
+  border-radius: 50%;
+  z-index: -1;
 }
 
 .predictor__logos {
@@ -883,6 +898,9 @@ body {
   place-content: center;
   text-align: center;
   gap: 4px;
+  background: radial-gradient(circle at center, rgba(8, 12, 24, 0.65), rgba(8, 12, 24, 0.2));
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
 .predictor__lead {
@@ -907,18 +925,22 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  justify-content: center;
 }
 
 .predictor__bar {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
 }
 
 .predictor__bar-label {
   color: var(--muted);
   font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .predictor__bar-value {
@@ -929,7 +951,7 @@ body {
 .predictor__bar-track {
   grid-column: 1 / -1;
   position: relative;
-  height: 10px;
+  height: 12px;
   border-radius: 999px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.06);
@@ -951,6 +973,27 @@ body {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.4;
+  margin-top: 2px;
+}
+
+@media (max-width: 720px) {
+  .predictor {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .predictor__details {
+    width: 100%;
+  }
+
+  .predictor__bar {
+    grid-template-columns: 1fr;
+  }
+
+  .predictor__bar-value {
+    justify-self: end;
+  }
 }
 
 .preview-hero {
