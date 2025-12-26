@@ -1042,6 +1042,13 @@ body {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.predictor__bar-track--split .predictor__bar-fill {
+  position: relative;
+  inset: auto;
+  flex: 0 0 calc(var(--pct) * 100%);
+  width: calc(var(--pct) * 100%);
+}
+
 .predictor__bar-fill--away,
 .predictor__bar-fill--home {
   height: 100%;
