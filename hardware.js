@@ -22,14 +22,14 @@
       name: "Bourbon and Boots Rivalry Trophy",
       description: "This trophy, established in season 9, is awarded to the most recent winner of the matchup between the Cardinals and Cowboys.",
       image: "hardware/bandb.png",
-      recipients: [{ type: "team", id: "Louisville Cardinals", display: "Louisville Cardinals" }],
+      recipients: [{ type: "team", id: "Dallas Cowboys", display: "Dallas Cowboys" }],
     },
     {
       id: "yankdix",
       name: "Yankee Dixie Rivarly Trophy",
       description: "The Yankee Dixie rivarly trophy was established in season 10 during a heated exchange between the Cowboys and Patriots.",
       image: "hardware/yankdix.png",
-      recipients: [{type: "team", id: "New England Patriots", display: "New England Patriots"}],
+      recipients: [{type: "team", id: "Dallas Cowboys", display: "Dallas Cowboys"}],
     },
   ];
 
