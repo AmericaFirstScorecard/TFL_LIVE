@@ -785,12 +785,14 @@
     ];
     rows.forEach((row) => {
       const player = String(row.Player || row.player || "").trim();
+      if (!player) return;
       const team = String(row.Team || row.team || "").trim();
       const image = imageKeys
         .map((key) => row[key])
         .find((val) => val != null && String(val).trim() !== "");
       const imageUrl = String(image || "").trim();
-      if (player && team) map.set(player, { team, image: imageUrl || null });
+      const rosterTeam = team || "Inactive";
+      map.set(player, { team: rosterTeam, image: imageUrl || null });
     });
     return map;
   }
