@@ -3162,6 +3162,11 @@ body {
   animation: draftSlideIn 0.4s ease, draftGlow 2.4s ease infinite alternate;
 }
 
+.draft-spotlight__card--clock {
+  animation: draftSlideIn 0.4s ease;
+  border-style: dashed;
+}
+
 .draft-spotlight__photo {
   width: 160px;
   aspect-ratio: 1;
@@ -3205,6 +3210,10 @@ body {
   font-weight: 800;
   letter-spacing: 0.01em;
   margin-bottom: 6px;
+}
+
+.draft-spotlight__card--clock .draft-spotlight__player {
+  color: #bfdbfe;
 }
 
 .draft-spotlight__meta {
@@ -3327,6 +3336,15 @@ body {
   animation: draftGlow 1.8s ease infinite alternate;
 }
 
+.draft-card--clock {
+  border-color: rgba(96, 165, 250, 0.35);
+  box-shadow: 0 14px 34px rgba(59, 130, 246, 0.18);
+}
+
+.draft-card__player--clock {
+  color: #bfdbfe;
+}
+
 .draft-chip--trade {
   background: rgba(251, 191, 36, 0.15);
   border-color: rgba(251, 191, 36, 0.35);
@@ -3337,6 +3355,12 @@ body {
   background: rgba(96, 165, 250, 0.15);
   border-color: rgba(96, 165, 250, 0.35);
   color: #bfdbfe;
+}
+
+.draft-chip--clock {
+  background: rgba(52, 211, 153, 0.14);
+  border-color: rgba(52, 211, 153, 0.45);
+  color: #bbf7d0;
 }
 
 @keyframes draftGlow {
