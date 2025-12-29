@@ -135,10 +135,15 @@
     playerLookupIndex: [],
     playerLookupHints: [],
     draftPicks: [],
-    draftSeenKeys: new Set(),
+    draftLive: null,
+    draftOnClockKey: null,
+    draftSeenAnnouncements: new Set(),
     draftAnnouncementQueue: [],
     draftSpotlightTimer: null,
     draftSpotlightActive: false,
+    draftSpotlightMode: null,
+    draftSpotlightKey: null,
+    draftEmptyDefaultText: "",
   };
 
   const els = {};
@@ -329,6 +334,7 @@
     els.draftBoardEmpty = id("draftBoardEmpty");
     els.draftStatus = id("draftStatus");
     els.draftError = id("draftError");
+    state.draftEmptyDefaultText = els.draftEmpty?.textContent || "";
   }
 
   function initTabs() {
@@ -848,15 +854,19 @@
       state.rosterLookup = buildRosterLookup(roster);
       state.playersByTeam = buildPlayersByTeam(enrichedRecords);
       state.standingsLookup = buildStandingsLookup(sortedStandings);
-      const draftUpdates = detectNewDraftPicks(state.draftPicks, draft);
-      state.draftPicks = sortDraftPicks(draft);
+      const { picks: draftPicks, live: draftLive } = normalizeDraftData(draft);
+      const draftUpdates = detectNewDraftPicks(state.draftPicks, draftPicks);
+      state.draftPicks = sortDraftPicks(draftPicks);
+      state.draftLive = draftLive;
+      state.draftOnClockKey = computeOnClockKey(state.draftPicks);
       renderMvp(enrichedRecords);
       renderStandings(sortedStandings);
       renderBracket(sortedStandings);
       state.newsRecords = news;
       renderNews(news);
-      renderDraft(state.draftPicks, draftUpdates);
+      renderDraft(state.draftPicks, draftUpdates, { live: state.draftLive, onClockKey: state.draftOnClockKey });
       queueDraftAnnouncements(draftUpdates);
+      ensureDraftSpotlight();
       refreshPlayerLookupIndex();
       if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
       setLoading(els.mvpLoading, false);
@@ -884,7 +894,10 @@
         state.newsRecords = buildSampleNews();
         renderNews(state.newsRecords);
         if (!state.draftPicks?.length) state.draftPicks = buildSampleDraft();
-        renderDraft(state.draftPicks, []);
+        state.draftLive = null;
+        state.draftOnClockKey = computeOnClockKey(state.draftPicks);
+        renderDraft(state.draftPicks, [], { live: state.draftLive, onClockKey: state.draftOnClockKey });
+        ensureDraftSpotlight();
         refreshPlayerLookupIndex();
         if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
         setLoading(els.mvpLoading, false);
@@ -2082,7 +2095,7 @@
 
   function parseDraftSheet(workbook) {
     const sheetName = workbook.SheetNames.find((n) => n.toLowerCase().includes("draft"));
-    if (!sheetName) return [];
+    if (!sheetName) return { picks: [], live: null };
     const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
 
     const norm = (obj) => {
@@ -2101,7 +2114,7 @@
       return "";
     };
 
-    const parseTraded = (val) => {
+    const parseBoolean = (val) => {
       const s = String(val ?? "").trim().toLowerCase();
       if (!s) return null;
       if (["yes", "y", "true", "1"].includes(s)) return true;
@@ -2109,7 +2122,9 @@
       return null;
     };
 
-    return rows
+    let draftLive = null;
+
+    const picks = rows
       .map((row, idx) => {
         const r = norm(row);
         const pickPositionRaw = pick(r, ["pick position", "pick #", "overall pick", "pick", "slot"]);
@@ -2117,11 +2132,14 @@
         const team = String(pick(r, ["team", "draft team", "selecting team", "franchise"]) || "").trim();
         const player = String(pick(r, ["player", "pick", "selection"]) || "").trim();
         const position = String(pick(r, ["position", "pos", "role"]) || "").trim();
-        const traded = parseTraded(pick(r, ["traded pick (yes, no)", "traded pick", "traded", "trade"]));
+        const traded = parseBoolean(pick(r, ["traded pick (yes, no)", "traded pick", "traded", "trade"]));
         const fromTeam = String(pick(r, ["if yes from what team", "from team", "via team", "via"]) || "").trim();
         const image = String(pick(r, ["image", "photo", "headshot", "image url", "picture"]) || "").trim();
         const note = String(pick(r, ["notes", "note"]) || "").trim();
+        const liveFlag = parseBoolean(pick(r, ["is the draft live yes or no?", "draft live", "live"]));
         const key = draftPickKey({ pickNumber, pickPosition: pickPositionRaw, player, team }, idx);
+
+        if (liveFlag !== null) draftLive = liveFlag;
 
         return {
           key,
@@ -2134,6 +2152,7 @@
           fromTeam,
           image: image || null,
           note,
+          isLive: liveFlag,
         };
       })
       .filter((p) => p.pickNumber != null || p.team || p.player)
@@ -2143,6 +2162,16 @@
         if (aNum !== bNum) return aNum - bNum;
         return String(a.player || "").localeCompare(String(b.player || ""));
       });
+
+    return { picks, live: draftLive };
+  }
+
+  function normalizeDraftData(draft) {
+    if (Array.isArray(draft)) return { picks: draft, live: null };
+    return {
+      picks: Array.isArray(draft?.picks) ? draft.picks : [],
+      live: draft?.live ?? null,
+    };
   }
 
   function computeMvpScore(rec, wins) {
@@ -3147,10 +3176,15 @@
     if (els.newsStatus) els.newsStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
   }
 
-  function renderDraft(picks = [], freshPicks = []) {
+  function renderDraft(picks = [], freshPicks = [], options = {}) {
     if (!els.draftBoard) return;
+    const { live = state.draftLive, onClockKey = state.draftOnClockKey } = options;
     const sorted = sortDraftPicks(picks);
     const freshKeys = new Set((freshPicks || []).map((p, idx) => draftPickKey(p, idx)));
+    const onClockPick =
+      onClockKey && live !== false
+        ? sorted.find((p, idx) => draftPickKey(p, idx) === onClockKey) || null
+        : null;
 
     els.draftBoard.innerHTML = "";
 
@@ -3169,20 +3203,30 @@
     sorted.forEach((pick, idx) => {
       const key = draftPickKey(pick, idx);
       if (key && !pick.key) pick.key = key;
-      frag.appendChild(buildDraftCard(pick, freshKeys.has(key)));
+      const isOnClock = Boolean(onClockKey && key === onClockKey && live !== false);
+      frag.appendChild(buildDraftCard(pick, freshKeys.has(key), isOnClock));
     });
 
     els.draftBoard.appendChild(frag);
-    if (els.draftStatus) els.draftStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    if (els.draftStatus) {
+      const statusParts = [];
+      if (live === false) statusParts.push("Draft not live");
+      else if (onClockPick) statusParts.push(`${formatDraftPickLabel(onClockPick)} • On the clock`);
+      else if (sorted.length) statusParts.push("Draft complete");
+      else statusParts.push("Draft center");
+      statusParts.push(`Updated ${new Date().toLocaleTimeString()}`);
+      els.draftStatus.textContent = statusParts.join(" • ");
+    }
     setLoading(els.draftLoading, false);
     toggleError(els.draftError, false);
   }
 
-  function buildDraftCard(pick, isFresh) {
+  function buildDraftCard(pick, isFresh, isOnClock = false) {
     const teamInfo = resolveTeam(pick.team);
     const card = document.createElement("div");
     card.className = "draft-card";
     if (isFresh) card.classList.add("draft-card--fresh");
+    if (isOnClock) card.classList.add("draft-card--clock");
 
     const pickBadge = document.createElement("div");
     pickBadge.className = "draft-card__pick";
@@ -3204,10 +3248,13 @@
 
     const player = document.createElement("div");
     player.className = "draft-card__player";
-    player.textContent = pick.player || "Awaiting selection";
+    const trimmedPlayer = String(pick.player || "").trim();
+    player.textContent = trimmedPlayer || (isOnClock ? "On the clock" : "Awaiting selection");
+    if (isOnClock && !trimmedPlayer) player.classList.add("draft-card__player--clock");
 
     const meta = document.createElement("div");
     meta.className = "draft-card__meta";
+    if (isOnClock) meta.appendChild(buildDraftChip("On the clock", "draft-chip--clock"));
     if (pick.position) meta.appendChild(buildDraftChip(pick.position, "draft-chip--accent"));
     if (pick.traded || pick.fromTeam) {
       const viaText = pick.fromTeam ? `Via ${pick.fromTeam}` : "Traded pick";
@@ -3231,14 +3278,39 @@
     return chip;
   }
 
+  function draftPickHasSelection(pick) {
+    return Boolean(String(pick?.player || "").trim());
+  }
+
+  function computeOnClock(picks, liveFlag = state.draftLive) {
+    if (liveFlag === false) return null;
+    const sorted = sortDraftPicks(picks);
+    const idx = sorted.findIndex((p) => !draftPickHasSelection(p));
+    if (idx === -1) return null;
+    const key = draftPickKey(sorted[idx], idx);
+    return { pick: sorted[idx], key, index: idx };
+  }
+
+  function computeOnClockKey(picks, liveFlag = state.draftLive) {
+    return computeOnClock(picks, liveFlag)?.key || null;
+  }
+
+  function draftAnnouncementSignature(pick, idx = 0) {
+    const key = draftPickKey(pick, idx);
+    if (!key) return null;
+    const playerKey = normalizePlayerKey(pick?.player) || "pending";
+    return `${key}::${playerKey}`;
+  }
+
   function queueDraftAnnouncements(picks) {
     if (!Array.isArray(picks) || !picks.length) return;
     const queued = [];
     picks.forEach((pick, idx) => {
       const key = draftPickKey(pick, idx);
+      const signature = draftAnnouncementSignature(pick, idx);
       pick.key = pick.key || key;
-      if (key && state.draftSeenKeys.has(key)) return;
-      if (key) state.draftSeenKeys.add(key);
+      if (signature && state.draftSeenAnnouncements.has(signature)) return;
+      if (signature) state.draftSeenAnnouncements.add(signature);
       queued.push(pick);
     });
     if (!queued.length) return;
@@ -3248,15 +3320,61 @@
 
   function playNextDraftAnnouncement() {
     if (state.draftSpotlightActive) return;
+    if (state.draftLive === false) {
+      ensureDraftSpotlight();
+      return;
+    }
     const next = state.draftAnnouncementQueue.shift();
-    if (!next) return;
-    state.draftSpotlightActive = true;
-    showDraftSpotlight(next);
+    if (!next) {
+      ensureDraftSpotlight();
+      return;
+    }
+    showDraftSpotlight(next, "selection");
   }
 
-  function showDraftSpotlight(pick) {
+  function setDraftSpotlightMessage(message) {
+    if (!els.draftEmpty) return;
+    const fallback = state.draftEmptyDefaultText || els.draftEmpty.textContent || "";
+    els.draftEmpty.textContent = message || fallback;
+    els.draftEmpty.hidden = false;
+  }
+
+  function clearDraftSpotlight(message) {
+    if (state.draftSpotlightTimer) clearTimeout(state.draftSpotlightTimer);
+    state.draftSpotlightTimer = null;
+    state.draftSpotlightActive = false;
+    state.draftSpotlightMode = null;
+    state.draftSpotlightKey = null;
+    if (!els.draftSpotlight) return;
+    els.draftSpotlight.innerHTML = "";
+    setDraftSpotlightMessage(message);
+  }
+
+  function ensureDraftSpotlight() {
+    if (!els.draftSpotlight) return;
+    if (state.draftSpotlightActive) return;
+    if (state.draftLive === false) {
+      clearDraftSpotlight("Draft is not live right now.");
+      return;
+    }
+    if (state.draftAnnouncementQueue.length) {
+      playNextDraftAnnouncement();
+      return;
+    }
+    const onClock = computeOnClock(state.draftPicks, state.draftLive);
+    if (!onClock) {
+      clearDraftSpotlight();
+      return;
+    }
+    if (state.draftSpotlightMode === "clock" && state.draftSpotlightKey === onClock.key) return;
+    showDraftSpotlight(onClock.pick, "clock", onClock.index);
+  }
+
+  function showDraftSpotlight(pick, mode = "selection", pickIndex = 0) {
     if (!els.draftSpotlight) {
       state.draftSpotlightActive = false;
+      state.draftSpotlightMode = null;
+      state.draftSpotlightKey = null;
       return;
     }
 
@@ -3264,6 +3382,7 @@
     const color = teamColor(teamColorKey(teamInfo));
     const card = document.createElement("div");
     card.className = "draft-spotlight__card";
+    if (mode === "clock") card.classList.add("draft-spotlight__card--clock");
     card.style.borderColor = `${color}55`;
     card.style.background = `linear-gradient(135deg, ${color}22, rgba(255,255,255,0.04))`;
 
@@ -3276,7 +3395,8 @@
     const body = document.createElement("div");
     const eyebrow = document.createElement("div");
     eyebrow.className = "draft-spotlight__eyebrow";
-    eyebrow.textContent = formatDraftPickLabel(pick);
+    eyebrow.textContent =
+      mode === "clock" ? `${formatDraftPickLabel(pick)} • On the clock` : formatDraftPickLabel(pick);
 
     const team = document.createElement("div");
     team.className = "draft-spotlight__team";
@@ -3290,7 +3410,10 @@
 
     const player = document.createElement("div");
     player.className = "draft-spotlight__player";
-    player.textContent = pick.player || "Pick incoming…";
+    player.textContent =
+      mode === "clock"
+        ? `${teamInfo.displayName || pick.team || "Team"} is on the clock`
+        : pick.player || "Pick incoming…";
 
     const meta = document.createElement("div");
     meta.className = "draft-spotlight__meta";
@@ -3298,6 +3421,7 @@
     if (pick.position) meta.appendChild(buildDraftPill(pick.position));
     if (pick.traded || pick.fromTeam)
       meta.appendChild(buildDraftPill(pick.fromTeam ? `Via ${pick.fromTeam}` : "Traded pick"));
+    if (mode === "clock") meta.appendChild(buildDraftPill("On the clock"));
 
     const noteText = pick.note || "";
     if (noteText) meta.appendChild(buildDraftPill(noteText));
@@ -3314,20 +3438,39 @@
     els.draftSpotlight.appendChild(card);
     if (els.draftEmpty) els.draftEmpty.hidden = true;
 
-    launchConfetti(color, { allowWhenHidden: true, allowRepeat: true, particleCount: 150, decayFrames: 170 });
+    state.draftSpotlightKey = draftPickKey(pick, pickIndex);
+    state.draftSpotlightMode = mode;
 
-    if (state.draftSpotlightTimer) clearTimeout(state.draftSpotlightTimer);
-    state.draftSpotlightTimer = setTimeout(() => {
-      card.style.transition = "opacity 0.35s ease, transform 0.35s ease";
-      card.style.opacity = "0";
-      card.style.transform = "translateY(10px)";
-      setTimeout(() => {
-        if (els.draftSpotlight?.contains(card)) els.draftSpotlight.removeChild(card);
-        state.draftSpotlightActive = false;
-        state.draftSpotlightTimer = null;
-        if (state.draftAnnouncementQueue.length) playNextDraftAnnouncement();
-      }, 350);
-    }, 6200);
+    if (mode === "selection") {
+      state.draftSpotlightActive = true;
+      launchConfetti(color, {
+        allowWhenHidden: false,
+        allowRepeat: true,
+        particleCount: 150,
+        decayFrames: 170,
+        allowedTabId: "tab-draft",
+      });
+
+      if (state.draftSpotlightTimer) clearTimeout(state.draftSpotlightTimer);
+      state.draftSpotlightTimer = setTimeout(() => {
+        card.style.transition = "opacity 0.35s ease, transform 0.35s ease";
+        card.style.opacity = "0";
+        card.style.transform = "translateY(10px)";
+        setTimeout(() => {
+          if (els.draftSpotlight?.contains(card)) els.draftSpotlight.removeChild(card);
+          state.draftSpotlightActive = false;
+          state.draftSpotlightTimer = null;
+          state.draftSpotlightMode = null;
+          state.draftSpotlightKey = null;
+          if (state.draftAnnouncementQueue.length) playNextDraftAnnouncement();
+          else ensureDraftSpotlight();
+        }, 350);
+      }, 6200);
+    } else {
+      if (state.draftSpotlightTimer) clearTimeout(state.draftSpotlightTimer);
+      state.draftSpotlightTimer = null;
+      state.draftSpotlightActive = false;
+    }
   }
 
   function buildDraftPill(text) {
@@ -3338,15 +3481,24 @@
   }
 
   function detectNewDraftPicks(prev = [], next = []) {
-    const prevKeys = new Set(sortDraftPicks(prev).map((p, idx) => draftPickKey(p, idx)));
+    const prevSorted = sortDraftPicks(prev);
+    const prevMap = new Map(
+      prevSorted.map((p, idx) => [draftPickKey(p, idx), normalizePlayerKey(p?.player) || ""])
+    );
     const sortedNext = sortDraftPicks(next);
     const updates = sortedNext.filter((pick, idx) => {
       const key = draftPickKey(pick, idx);
       pick.key = pick.key || key;
-      return !prevKeys.has(key);
+      if (!key) return false;
+      const prevPlayer = prevMap.get(key);
+      const nextPlayer = normalizePlayerKey(pick?.player) || "";
+      if (prevPlayer === undefined) return true;
+      if (!prevPlayer && nextPlayer) return true;
+      if (prevPlayer && nextPlayer && prevPlayer !== nextPlayer) return true;
+      return false;
     });
 
-    if (!prevKeys.size && updates.length > 1) {
+    if (!prevMap.size && updates.length > 1) {
       return [updates[updates.length - 1]];
     }
     return updates;
@@ -4538,9 +4690,15 @@
   }
 
   function launchConfetti(color = "#60a5fa", options = {}) {
-    const { allowWhenHidden = false, allowRepeat = false, particleCount = 120, decayFrames = 140 } = options;
-    const winTab = document.getElementById("tab-win");
-    if (!allowWhenHidden && winTab && !winTab.classList.contains("tab--active")) return;
+    const {
+      allowWhenHidden = false,
+      allowRepeat = false,
+      particleCount = 120,
+      decayFrames = 140,
+      allowedTabId = "tab-win",
+    } = options;
+    const allowedTab = allowedTabId ? document.getElementById(allowedTabId) : null;
+    if (!allowWhenHidden && allowedTab && !allowedTab.classList.contains("tab--active")) return;
     if (!allowRepeat && state.hasShownConfetti) return;
     if (!allowRepeat) state.hasShownConfetti = true;
     const canvas = document.createElement("canvas");
