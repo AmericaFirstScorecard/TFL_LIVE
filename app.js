@@ -553,10 +553,11 @@
       const roster = lookupRosterInfo(name);
       const legacy = lookupLegacy(name);
       const existing = index.get(key) || {};
-      const team = existing.team || data.team || roster?.team || "";
+      const rosterTeam = roster?.team || "";
+      const team = rosterTeam || existing.team || data.team || "";
       const image = existing.image || data.image || roster?.image || null;
       const candidateActive = existing.active || data.active || false;
-      const active = team && team !== "Inactive" ? candidateActive : false;
+      const active = Boolean(rosterTeam && rosterTeam !== "Inactive" && candidateActive);
       index.set(key, {
         name: existing.name || name,
         active,
