@@ -553,11 +553,15 @@
       const roster = lookupRosterInfo(name);
       const legacy = lookupLegacy(name);
       const existing = index.get(key) || {};
+      const team = existing.team || data.team || roster?.team || "";
+      const image = existing.image || data.image || roster?.image || null;
+      const candidateActive = existing.active || data.active || false;
+      const active = team && team !== "Inactive" ? candidateActive : false;
       index.set(key, {
         name: existing.name || name,
-        active: existing.active || data.active || false,
-        team: existing.team || data.team || roster?.team || "",
-        image: existing.image || data.image || roster?.image || null,
+        active,
+        team,
+        image,
         mvpScore: existing.mvpScore ?? data.mvpScore ?? null,
         winPct: existing.winPct ?? data.winPct ?? null,
         legacyTier: existing.legacyTier || data.legacyTier || legacy?.tier || "",
