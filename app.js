@@ -134,6 +134,11 @@
     legacyPromise: null,
     playerLookupIndex: [],
     playerLookupHints: [],
+    draftPicks: [],
+    draftSeenKeys: new Set(),
+    draftAnnouncementQueue: [],
+    draftSpotlightTimer: null,
+    draftSpotlightActive: false,
   };
 
   const els = {};
@@ -317,6 +322,13 @@
     els.scheduleError = id("scheduleError");
     els.scheduleEmpty = id("scheduleEmpty");
 
+    els.draftSpotlight = id("draftSpotlight");
+    els.draftBoard = id("draftBoard");
+    els.draftLoading = id("draftLoading");
+    els.draftEmpty = id("draftEmpty");
+    els.draftBoardEmpty = id("draftBoardEmpty");
+    els.draftStatus = id("draftStatus");
+    els.draftError = id("draftError");
   }
 
   function initTabs() {
@@ -325,6 +337,7 @@
       win: document.getElementById("tab-win"),
       mvp: document.getElementById("tab-mvp"),
       standings: document.getElementById("tab-standings"),
+      draft: document.getElementById("tab-draft"),
       news: document.getElementById("tab-news"),
       bracket: document.getElementById("tab-bracket"),
       schedule: document.getElementById("tab-schedule"),
@@ -811,6 +824,8 @@
     toggleError(els.newsError, false);
     setLoading(els.bracketLoading, true);
     toggleError(els.bracketError, false);
+    setLoading(els.draftLoading, true);
+    toggleError(els.draftError, false);
     const requestId = Date.now();
     if (state.mvpAbortController) state.mvpAbortController.abort();
     const controller = new AbortController();
@@ -821,7 +836,7 @@
     try {
       const buffer = await fetchArrayBuffer(url, controller.signal);
       if (requestId < state.mvpVersion) return;
-      const { mvpRecords, standings, news, roster } = parseMvpWorkbook(buffer);
+      const { mvpRecords, standings, news, roster, draft } = parseMvpWorkbook(buffer);
       await ensureLegacyData();
       const enrichedRecords = annotateLegacy(mvpRecords);
       state.mvpVersion = requestId;
@@ -833,17 +848,22 @@
       state.rosterLookup = buildRosterLookup(roster);
       state.playersByTeam = buildPlayersByTeam(enrichedRecords);
       state.standingsLookup = buildStandingsLookup(sortedStandings);
+      const draftUpdates = detectNewDraftPicks(state.draftPicks, draft);
+      state.draftPicks = sortDraftPicks(draft);
       renderMvp(enrichedRecords);
       renderStandings(sortedStandings);
       renderBracket(sortedStandings);
       state.newsRecords = news;
       renderNews(news);
+      renderDraft(state.draftPicks, draftUpdates);
+      queueDraftAnnouncements(draftUpdates);
       refreshPlayerLookupIndex();
       if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
       setLoading(els.mvpLoading, false);
       setLoading(els.standingsLoading, false);
       setLoading(els.newsLoading, false);
       setLoading(els.bracketLoading, false);
+      setLoading(els.draftLoading, false);
     } catch (err) {
       if (err?.name === "AbortError") return;
       console.error("[mvp]", err);
@@ -863,14 +883,18 @@
         renderBracket(sampleStandings);
         state.newsRecords = buildSampleNews();
         renderNews(state.newsRecords);
+        if (!state.draftPicks?.length) state.draftPicks = buildSampleDraft();
+        renderDraft(state.draftPicks, []);
         refreshPlayerLookupIndex();
         if (state.lastMatchup) renderMatchup({ ...state.lastMatchup });
         setLoading(els.mvpLoading, false);
         setLoading(els.standingsLoading, false);
         setLoading(els.newsLoading, false);
         setLoading(els.bracketLoading, false);
+        setLoading(els.draftLoading, false);
         showError(els.newsError, `News feed error: ${err.message}`);
         showError(els.bracketError, `Bracket error: ${err.message}`);
+        showError(els.draftError, `Draft feed error: ${err.message}`);
       }
     }
   }
@@ -1860,6 +1884,7 @@
     const receiving = parseReceivingSheet(workbook);
     const defense = parseDefenseSheet(workbook);
     const news = parseNewsSheet(workbook);
+    const draft = parseDraftSheet(workbook, roster);
 
   const players = new Map();
   const ensure = (name) => {
@@ -1952,6 +1977,7 @@
       standings,
       roster: rosterWithProfiles,
       news,
+      draft,
     };
   }
 
@@ -2052,6 +2078,71 @@
         };
       })
       .filter((r) => r.headline || r.body);
+  }
+
+  function parseDraftSheet(workbook) {
+    const sheetName = workbook.SheetNames.find((n) => n.toLowerCase().includes("draft"));
+    if (!sheetName) return [];
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
+
+    const norm = (obj) => {
+      const out = {};
+      Object.entries(obj || {}).forEach(([k, v]) => {
+        out[String(k).trim().toLowerCase()] = v;
+      });
+      return out;
+    };
+
+    const pick = (row, keys) => {
+      for (const key of keys) {
+        const val = row[key];
+        if (val != null && String(val).trim() !== "") return val;
+      }
+      return "";
+    };
+
+    const parseTraded = (val) => {
+      const s = String(val ?? "").trim().toLowerCase();
+      if (!s) return null;
+      if (["yes", "y", "true", "1"].includes(s)) return true;
+      if (["no", "n", "false", "0"].includes(s)) return false;
+      return null;
+    };
+
+    return rows
+      .map((row, idx) => {
+        const r = norm(row);
+        const pickPositionRaw = pick(r, ["pick position", "pick #", "overall pick", "pick", "slot"]);
+        const pickNumber = parseNumber(pickPositionRaw);
+        const team = String(pick(r, ["team", "draft team", "selecting team", "franchise"]) || "").trim();
+        const player = String(pick(r, ["player", "pick", "selection"]) || "").trim();
+        const position = String(pick(r, ["position", "pos", "role"]) || "").trim();
+        const traded = parseTraded(pick(r, ["traded pick (yes, no)", "traded pick", "traded", "trade"]));
+        const fromTeam = String(pick(r, ["if yes from what team", "from team", "via team", "via"]) || "").trim();
+        const image = String(pick(r, ["image", "photo", "headshot", "image url", "picture"]) || "").trim();
+        const note = String(pick(r, ["notes", "note"]) || "").trim();
+        const key = draftPickKey({ pickNumber, pickPosition: pickPositionRaw, player, team }, idx);
+
+        return {
+          key,
+          pickNumber: Number.isFinite(pickNumber) ? pickNumber : null,
+          pickPosition: pickPositionRaw || "",
+          team,
+          player,
+          position,
+          traded,
+          fromTeam,
+          image: image || null,
+          note,
+        };
+      })
+      .filter((p) => p.pickNumber != null || p.team || p.player)
+      .sort((a, b) => {
+        const aNum = a.pickNumber ?? parseNumber(a.pickPosition) ?? Number.MAX_SAFE_INTEGER;
+        const bNum = b.pickNumber ?? parseNumber(b.pickPosition) ?? Number.MAX_SAFE_INTEGER;
+        if (aNum !== bNum) return aNum - bNum;
+        return String(a.player || "").localeCompare(String(b.player || ""));
+      });
   }
 
   function computeMvpScore(rec, wins) {
@@ -3056,6 +3147,211 @@
     if (els.newsStatus) els.newsStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
   }
 
+  function renderDraft(picks = [], freshPicks = []) {
+    if (!els.draftBoard) return;
+    const sorted = sortDraftPicks(picks);
+    const freshKeys = new Set((freshPicks || []).map((p, idx) => draftPickKey(p, idx)));
+
+    els.draftBoard.innerHTML = "";
+
+    if (!sorted.length) {
+      if (els.draftBoardEmpty) els.draftBoardEmpty.hidden = false;
+      if (els.draftEmpty) els.draftEmpty.hidden = false;
+      setLoading(els.draftLoading, false);
+      return;
+    }
+
+    if (els.draftBoardEmpty) els.draftBoardEmpty.hidden = true;
+    if (els.draftEmpty) els.draftEmpty.hidden = true;
+
+    const frag = document.createDocumentFragment();
+
+    sorted.forEach((pick, idx) => {
+      const key = draftPickKey(pick, idx);
+      if (key && !pick.key) pick.key = key;
+      frag.appendChild(buildDraftCard(pick, freshKeys.has(key)));
+    });
+
+    els.draftBoard.appendChild(frag);
+    if (els.draftStatus) els.draftStatus.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    setLoading(els.draftLoading, false);
+    toggleError(els.draftError, false);
+  }
+
+  function buildDraftCard(pick, isFresh) {
+    const teamInfo = resolveTeam(pick.team);
+    const card = document.createElement("div");
+    card.className = "draft-card";
+    if (isFresh) card.classList.add("draft-card--fresh");
+
+    const pickBadge = document.createElement("div");
+    pickBadge.className = "draft-card__pick";
+    pickBadge.textContent = formatDraftPickLabel(pick);
+
+    const body = document.createElement("div");
+    body.className = "draft-card__body";
+
+    const teamRow = document.createElement("div");
+    teamRow.className = "draft-card__team";
+    const logo = document.createElement("div");
+    logo.className = "draft-card__logo";
+    setLogo(logo, teamInfo.logoKey);
+
+    const teamName = document.createElement("div");
+    teamName.textContent = teamInfo.displayName || pick.team || "Team TBD";
+    teamRow.appendChild(logo);
+    teamRow.appendChild(teamName);
+
+    const player = document.createElement("div");
+    player.className = "draft-card__player";
+    player.textContent = pick.player || "Awaiting selection";
+
+    const meta = document.createElement("div");
+    meta.className = "draft-card__meta";
+    if (pick.position) meta.appendChild(buildDraftChip(pick.position, "draft-chip--accent"));
+    if (pick.traded || pick.fromTeam) {
+      const viaText = pick.fromTeam ? `Via ${pick.fromTeam}` : "Traded pick";
+      meta.appendChild(buildDraftChip(viaText, "draft-chip--trade"));
+    }
+    if (pick.note) meta.appendChild(buildDraftChip(pick.note));
+
+    body.appendChild(teamRow);
+    body.appendChild(player);
+    body.appendChild(meta);
+
+    card.appendChild(pickBadge);
+    card.appendChild(body);
+    return card;
+  }
+
+  function buildDraftChip(text, cls = "") {
+    const chip = document.createElement("span");
+    chip.className = ["draft-chip", cls].filter(Boolean).join(" ");
+    chip.textContent = text;
+    return chip;
+  }
+
+  function queueDraftAnnouncements(picks) {
+    if (!Array.isArray(picks) || !picks.length) return;
+    const queued = [];
+    picks.forEach((pick, idx) => {
+      const key = draftPickKey(pick, idx);
+      pick.key = pick.key || key;
+      if (key && state.draftSeenKeys.has(key)) return;
+      if (key) state.draftSeenKeys.add(key);
+      queued.push(pick);
+    });
+    if (!queued.length) return;
+    state.draftAnnouncementQueue.push(...queued);
+    playNextDraftAnnouncement();
+  }
+
+  function playNextDraftAnnouncement() {
+    if (state.draftSpotlightActive) return;
+    const next = state.draftAnnouncementQueue.shift();
+    if (!next) return;
+    state.draftSpotlightActive = true;
+    showDraftSpotlight(next);
+  }
+
+  function showDraftSpotlight(pick) {
+    if (!els.draftSpotlight) {
+      state.draftSpotlightActive = false;
+      return;
+    }
+
+    const teamInfo = resolveTeam(pick.team);
+    const color = teamColor(teamColorKey(teamInfo));
+    const card = document.createElement("div");
+    card.className = "draft-spotlight__card";
+    card.style.borderColor = `${color}55`;
+    card.style.background = `linear-gradient(135deg, ${color}22, rgba(255,255,255,0.04))`;
+
+    const photo = document.createElement("div");
+    photo.className = "draft-spotlight__photo";
+    const image = draftImageForPick(pick);
+    if (image) photo.style.backgroundImage = `url(${image})`;
+    else setLogo(photo, teamInfo.logoKey);
+
+    const body = document.createElement("div");
+    const eyebrow = document.createElement("div");
+    eyebrow.className = "draft-spotlight__eyebrow";
+    eyebrow.textContent = formatDraftPickLabel(pick);
+
+    const team = document.createElement("div");
+    team.className = "draft-spotlight__team";
+    const logo = document.createElement("div");
+    logo.className = "draft-spotlight__team-logo";
+    setLogo(logo, teamInfo.logoKey);
+    const teamName = document.createElement("span");
+    teamName.textContent = teamInfo.displayName || "Team";
+    team.appendChild(logo);
+    team.appendChild(teamName);
+
+    const player = document.createElement("div");
+    player.className = "draft-spotlight__player";
+    player.textContent = pick.player || "Pick incoming…";
+
+    const meta = document.createElement("div");
+    meta.className = "draft-spotlight__meta";
+    meta.appendChild(buildDraftPill(teamInfo.displayName || "Team"));
+    if (pick.position) meta.appendChild(buildDraftPill(pick.position));
+    if (pick.traded || pick.fromTeam)
+      meta.appendChild(buildDraftPill(pick.fromTeam ? `Via ${pick.fromTeam}` : "Traded pick"));
+
+    const noteText = pick.note || "";
+    if (noteText) meta.appendChild(buildDraftPill(noteText));
+
+    body.appendChild(eyebrow);
+    body.appendChild(team);
+    body.appendChild(player);
+    body.appendChild(meta);
+
+    card.appendChild(photo);
+    card.appendChild(body);
+
+    els.draftSpotlight.innerHTML = "";
+    els.draftSpotlight.appendChild(card);
+    if (els.draftEmpty) els.draftEmpty.hidden = true;
+
+    launchConfetti(color, { allowWhenHidden: true, allowRepeat: true, particleCount: 150, decayFrames: 170 });
+
+    if (state.draftSpotlightTimer) clearTimeout(state.draftSpotlightTimer);
+    state.draftSpotlightTimer = setTimeout(() => {
+      card.style.transition = "opacity 0.35s ease, transform 0.35s ease";
+      card.style.opacity = "0";
+      card.style.transform = "translateY(10px)";
+      setTimeout(() => {
+        if (els.draftSpotlight?.contains(card)) els.draftSpotlight.removeChild(card);
+        state.draftSpotlightActive = false;
+        state.draftSpotlightTimer = null;
+        if (state.draftAnnouncementQueue.length) playNextDraftAnnouncement();
+      }, 350);
+    }, 6200);
+  }
+
+  function buildDraftPill(text) {
+    const pill = document.createElement("span");
+    pill.className = "draft-spotlight__pill";
+    pill.textContent = text;
+    return pill;
+  }
+
+  function detectNewDraftPicks(prev = [], next = []) {
+    const prevKeys = new Set(sortDraftPicks(prev).map((p, idx) => draftPickKey(p, idx)));
+    const sortedNext = sortDraftPicks(next);
+    const updates = sortedNext.filter((pick, idx) => {
+      const key = draftPickKey(pick, idx);
+      pick.key = pick.key || key;
+      return !prevKeys.has(key);
+    });
+
+    if (!prevKeys.size && updates.length > 1) {
+      return [updates[updates.length - 1]];
+    }
+    return updates;
+  }
+
   function attachSortHandlersOnce() {
     if (state.sortHandlersAttached) return;
     state.sortHandlersAttached = true;
@@ -3960,6 +4256,37 @@
     return null;
   }
 
+  function sortDraftPicks(picks) {
+    return [...(picks || [])].sort((a, b) => {
+      const aNum = parseNumber(a?.pickNumber ?? a?.pickPosition) ?? Number.MAX_SAFE_INTEGER;
+      const bNum = parseNumber(b?.pickNumber ?? b?.pickPosition) ?? Number.MAX_SAFE_INTEGER;
+      if (aNum !== bNum) return aNum - bNum;
+      return String(a?.player || "").localeCompare(String(b?.player || ""));
+    });
+  }
+
+  function draftPickKey(pick, fallbackIndex = 0) {
+    const num = parseNumber(pick?.pickNumber ?? pick?.pickPosition);
+    const playerKey = normalizePlayerKey(pick?.player);
+    const teamKey = normalizeTeamKey(pick?.team);
+    if (Number.isFinite(num)) return `pick-${num}-${playerKey || teamKey || "tbd"}`;
+    if (playerKey || teamKey) return `pick-${playerKey || "player"}-${teamKey || "team"}`;
+    return `pick-${fallbackIndex}`;
+  }
+
+  function formatDraftPickLabel(pick) {
+    if (!pick) return "Pick";
+    if (Number.isFinite(pick.pickNumber)) return `Pick ${pick.pickNumber}`;
+    if (pick.pickPosition) return `Pick ${pick.pickPosition}`;
+    return "Pick";
+  }
+
+  function draftImageForPick(pick) {
+    if (!pick) return null;
+    const roster = lookupRosterInfo(pick.player);
+    return pick.image || roster?.image || null;
+  }
+
   function teamColor(key) {
     const norm = normalizeTeamKey(key);
     return TEAM_COLORS[norm] || "#60a5fa";
@@ -4210,11 +4537,12 @@
     }
   }
 
-  function launchConfetti(color = "#60a5fa") {
+  function launchConfetti(color = "#60a5fa", options = {}) {
+    const { allowWhenHidden = false, allowRepeat = false, particleCount = 120, decayFrames = 140 } = options;
     const winTab = document.getElementById("tab-win");
-    if (winTab && !winTab.classList.contains("tab--active")) return;
-    if (state.hasShownConfetti) return;
-    state.hasShownConfetti = true;
+    if (!allowWhenHidden && winTab && !winTab.classList.contains("tab--active")) return;
+    if (!allowRepeat && state.hasShownConfetti) return;
+    if (!allowRepeat) state.hasShownConfetti = true;
     const canvas = document.createElement("canvas");
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -4225,7 +4553,8 @@
     document.body.appendChild(canvas);
     const ctx = canvas.getContext("2d");
 
-    const pieces = Array.from({ length: 120 }).map(() => ({
+    const count = Math.max(60, Math.min(240, particleCount));
+    const pieces = Array.from({ length: count }).map(() => ({
       x: Math.random() * canvas.width,
       y: -Math.random() * canvas.height,
       size: 6 + Math.random() * 6,
@@ -4235,7 +4564,6 @@
       color,
     }));
 
-    const decay = 140;
     let frame = 0;
 
     function draw() {
@@ -4253,7 +4581,7 @@
         p.rotation += 0.05;
       });
       frame += 1;
-      if (frame < decay) requestAnimationFrame(draw);
+      if (frame < decayFrames) requestAnimationFrame(draw);
       else document.body.removeChild(canvas);
     }
     requestAnimationFrame(draw);
@@ -4399,6 +4727,33 @@
         likes: 860,
         views: 30110,
         image: "",
+      },
+    ];
+  }
+
+  function buildSampleDraft() {
+    return [
+      {
+        key: "pick-1",
+        pickNumber: 1,
+        pickPosition: "1",
+        team: "LOU",
+        player: "Franchise QB",
+        position: "QB",
+        traded: false,
+        fromTeam: "",
+        note: "Face of the franchise",
+      },
+      {
+        key: "pick-2",
+        pickNumber: 2,
+        pickPosition: "2",
+        team: "DAL",
+        player: "Shutdown Corner",
+        position: "CB",
+        traded: true,
+        fromTeam: "BUF",
+        note: "Acquired via trade",
       },
     ];
   }

@@ -48,6 +48,7 @@
         <a href="#win" class="nav__item nav__item--active" data-tab="win" aria-current="page">Win Prob</a>
         <a href="#mvp" class="nav__item" data-tab="mvp">MVP Odds</a>
         <a href="#standings" class="nav__item" data-tab="standings">Standings</a>
+        <a href="#draft" class="nav__item" data-tab="draft">Draft</a>
         <a href="#news" class="nav__item" data-tab="news">News</a>
         <a href="#bracket" class="nav__item" data-tab="bracket">Tate Bowl Bracket</a>
         <a href="#schedule" class="nav__item" data-tab="schedule">Schedule</a>
@@ -254,6 +255,35 @@
             </table>
             <div class="state state--loading" id="standingsLoading">Loading standings…</div>
             <div class="state state--error" id="standingsError" hidden>Unable to load standings.</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-draft" class="tab" aria-label="Draft center view">
+        <div class="panel">
+          <div class="panel__header">
+            <div>
+              <div class="chart-card__title">Draft Center</div>
+              <div class="chart-card__subtitle">Live picks from the “draft” sheet</div>
+            </div>
+            <div class="badge badge--ghost" id="draftStatus">Loading…</div>
+          </div>
+
+          <div class="draft-spotlight" id="draftSpotlight" aria-live="polite">
+            <div class="state state--muted" id="draftEmpty">Draft pick spotlights will appear here instantly.</div>
+          </div>
+          <div class="state state--loading" id="draftLoading">Listening for draft picks…</div>
+          <div class="state state--error" id="draftError" hidden>Unable to load draft feed.</div>
+
+          <div class="draft-board">
+            <div class="draft-board__header">
+              <div>
+                <div class="chart-card__title">Draft board</div>
+                <div class="chart-card__subtitle">Pick position, trades, and landing spots</div>
+              </div>
+            </div>
+            <div class="draft-board__grid" id="draftBoard"></div>
+            <div class="state state--empty" id="draftBoardEmpty" hidden>No draft picks have been posted yet.</div>
           </div>
         </div>
       </section>
