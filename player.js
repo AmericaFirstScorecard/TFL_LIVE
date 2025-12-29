@@ -137,14 +137,17 @@
       state.players.find((p) => normalizeTeamKey(p.player).includes(target));
 
     if (state.playerRecord) {
-      state.teamInfo = resolveTeam(state.playerRecord.team);
-      state.teamKey = state.teamInfo.canonicalKey;
+      const team = state.playerRecord.team;
+      if (team && team !== "Inactive") {
+        state.teamInfo = resolveTeam(team);
+        state.teamKey = state.teamInfo.canonicalKey;
+      }
     } else if (state.teamKey) {
       state.teamInfo = resolveTeam(state.teamKey);
       state.teamKey = state.teamInfo.canonicalKey;
     } else {
       const roster = lookupRosterInfo(state.playerName);
-      if (roster?.team) {
+      if (roster?.team && roster.team !== "Inactive") {
         state.teamInfo = resolveTeam(roster.team);
         state.teamKey = state.teamInfo.canonicalKey;
       }
@@ -161,7 +164,7 @@
 
   function renderHero() {
     const player = state.playerRecord;
-    const isActive = Boolean(player);
+    const isActive = Boolean(player && player.team && player.team !== "Inactive");
     const displayName = player?.player || state.playerName;
     if (els.playerName) els.playerName.textContent = displayName;
     setPlayerAvatar(els.playerAvatar, player || { player: displayName });
@@ -172,12 +175,16 @@
       metaParts.push(`MVP ${formatScore(player.mvpScore)}`);
       if (player.winPct != null) metaParts.push(`Win% ${formatPct(player.winPct)}`);
     }
-    const teamLabel = state.teamInfo ? state.teamInfo.displayName : state.teamKey || "Team";
+    const teamLabel = isActive
+      ? state.teamInfo
+        ? state.teamInfo.displayName
+        : state.teamKey || "Team"
+      : "Inactive";
     if (metaParts.length === 0) metaParts.push("Awaiting stats");
     if (els.playerMeta) els.playerMeta.textContent = metaParts.join(" • ");
 
     if (els.playerTeamLink) {
-      if (state.teamInfo?.displayName) {
+      if (isActive && state.teamInfo?.displayName) {
         const teamUrl = teamPageUrl(state.teamInfo);
         els.playerTeamLink.innerHTML = `<a class="team-link" href="${teamUrl}">Team: ${escapeHtml(teamLabel)}</a>`;
       } else {
@@ -785,12 +792,14 @@
     ];
     rows.forEach((row) => {
       const player = String(row.Player || row.player || "").trim();
+      if (!player) return;
       const team = String(row.Team || row.team || "").trim();
       const image = imageKeys
         .map((key) => row[key])
         .find((val) => val != null && String(val).trim() !== "");
       const imageUrl = String(image || "").trim();
-      if (player && team) map.set(player, { team, image: imageUrl || null });
+      const rosterTeam = team || "Inactive";
+      map.set(player, { team: rosterTeam, image: imageUrl || null });
     });
     return map;
   }
