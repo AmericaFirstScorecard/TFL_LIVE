@@ -278,7 +278,7 @@
         .map((key) => row[key])
         .find((val) => val != null && String(val).trim() !== "");
       const imageUrl = String(image || "").trim();
-      const info = { team, image: imageUrl || null };
+      const info = { team: team || "Inactive", image: imageUrl || null };
       map.set(player, info);
       const norm = normalizePlayerKey(player);
       if (norm) lookup.set(norm, { ...info, name: player });
