@@ -2511,10 +2511,20 @@
     return clean.length ? clean.join(" • ") : "—";
   }
 
+  function isActivePlayer(rec) {
+    if (!rec) return false;
+    if (rec.active === false) return false;
+    const roster = lookupRosterInfo(rec.player);
+    const team = rec.team || roster?.team || "";
+    return Boolean(team && team !== "Inactive");
+  }
+
   function renderMvp(records) {
     if (!els.mvpTableBody) return;
 
-    const sorted = [...records].sort((a, b) => {
+    const visibleRecords = (records || []).filter(isActivePlayer);
+
+    const sorted = [...visibleRecords].sort((a, b) => {
       const dir = state.sort.dir === "asc" ? 1 : -1;
       const av = a[state.sort.key] ?? 0;
       const bv = b[state.sort.key] ?? 0;
