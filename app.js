@@ -143,6 +143,8 @@
     draftSpotlightActive: false,
     draftSpotlightMode: null,
     draftSpotlightKey: null,
+    draftReplayIndex: 0,
+    draftSequenceTimer: null,
     draftEmptyDefaultText: "",
   };
 
@@ -854,10 +856,16 @@
       state.rosterLookup = buildRosterLookup(roster);
       state.playersByTeam = buildPlayersByTeam(enrichedRecords);
       state.standingsLookup = buildStandingsLookup(sortedStandings);
+      const prevDraftLive = state.draftLive;
       const { picks: draftPicks, live: draftLive } = normalizeDraftData(draft);
       const draftUpdates = detectNewDraftPicks(state.draftPicks, draftPicks);
       state.draftPicks = sortDraftPicks(draftPicks);
       state.draftLive = draftLive;
+      if (draftLive !== prevDraftLive) {
+        state.draftReplayIndex = 0;
+        clearDraftSpotlight();
+      }
+      if (draftLive === false && draftUpdates.length) state.draftReplayIndex = 0;
       state.draftOnClockKey = computeOnClockKey(state.draftPicks);
       renderMvp(enrichedRecords);
       renderStandings(sortedStandings);
@@ -3237,19 +3245,27 @@
 
     const teamRow = document.createElement("div");
     teamRow.className = "draft-card__team";
+    const teamLink = document.createElement("a");
+    teamLink.className = "team-link team-link--block";
+    teamLink.href = teamPageUrl(teamInfo);
+    teamLink.title = `Open ${teamInfo.displayName || "team"} page`;
+    teamLink.addEventListener("click", (e) => e.stopPropagation());
+    teamLink.addEventListener("keydown", (e) => e.stopPropagation());
     const logo = document.createElement("div");
     logo.className = "draft-card__logo";
     setLogo(logo, teamInfo.logoKey);
 
     const teamName = document.createElement("div");
     teamName.textContent = teamInfo.displayName || pick.team || "Team TBD";
-    teamRow.appendChild(logo);
-    teamRow.appendChild(teamName);
+    teamLink.appendChild(logo);
+    teamLink.appendChild(teamName);
+    teamRow.appendChild(teamLink);
 
-    const player = document.createElement("div");
-    player.className = "draft-card__player";
     const trimmedPlayer = String(pick.player || "").trim();
-    player.textContent = trimmedPlayer || (isOnClock ? "On the clock" : "Awaiting selection");
+    const player =
+      trimmedPlayer ? buildPlayerLink(trimmedPlayer, teamInfo.canonicalKey, "draft-card__player") : document.createElement("div");
+    player.classList.add("draft-card__player");
+    player.textContent = player.textContent || (isOnClock ? "On the clock" : "Awaiting selection");
     if (isOnClock && !trimmedPlayer) player.classList.add("draft-card__player--clock");
 
     const meta = document.createElement("div");
@@ -3341,7 +3357,9 @@
 
   function clearDraftSpotlight(message) {
     if (state.draftSpotlightTimer) clearTimeout(state.draftSpotlightTimer);
+    if (state.draftSequenceTimer) clearTimeout(state.draftSequenceTimer);
     state.draftSpotlightTimer = null;
+    state.draftSequenceTimer = null;
     state.draftSpotlightActive = false;
     state.draftSpotlightMode = null;
     state.draftSpotlightKey = null;
@@ -3354,7 +3372,7 @@
     if (!els.draftSpotlight) return;
     if (state.draftSpotlightActive) return;
     if (state.draftLive === false) {
-      clearDraftSpotlight("Draft is not live right now.");
+      startDraftReplayCycle();
       return;
     }
     if (state.draftAnnouncementQueue.length) {
@@ -3377,6 +3395,67 @@
       state.draftSpotlightKey = null;
       return;
     }
+    const isLiveDraft = state.draftLive !== false;
+    if (mode === "selection" && isLiveDraft) {
+      runDraftPickRevealSequence(pick, pickIndex);
+      return;
+    }
+    renderDraftSpotlightCard(pick, mode, pickIndex, {
+      allowConfetti: isLiveDraft && mode === "selection",
+      autoAdvance: mode === "selection",
+    });
+  }
+
+  function startDraftReplayCycle() {
+    if (!els.draftSpotlight) return;
+    const sorted = sortDraftPicks(state.draftPicks);
+    const picksToShow = sorted.filter(draftPickHasSelection);
+    const queue = picksToShow.length ? picksToShow : sorted;
+    if (!queue.length) {
+      clearDraftSpotlight("Draft replay will start once picks are available.");
+      return;
+    }
+    const index = state.draftReplayIndex % queue.length;
+    const pick = queue[index];
+    state.draftReplayIndex = (index + 1) % queue.length;
+    renderDraftSpotlightCard(pick, "selection", index, {
+      allowConfetti: false,
+      autoAdvance: true,
+      displayMs: 4200,
+    });
+  }
+
+  function runDraftPickRevealSequence(pick, pickIndex = 0) {
+    if (state.draftSequenceTimer) clearTimeout(state.draftSequenceTimer);
+    state.draftSpotlightActive = true;
+    renderDraftSpotlightCard(pick, "pick-in", pickIndex, {
+      allowConfetti: false,
+      autoAdvance: false,
+      eyebrowOverride: `${formatDraftPickLabel(pick)} • The pick is in`,
+      playerTextOverride: "The pick is in…",
+      photoOverride: "logos/TFLs.svg",
+      metaPills: [buildDraftPill(resolveTeam(pick.team).displayName || "Team"), buildDraftPill("Stand by")],
+    });
+    state.draftSequenceTimer = setTimeout(() => {
+      state.draftSequenceTimer = null;
+      renderDraftSpotlightCard(pick, "selection", pickIndex, {
+        allowConfetti: state.draftLive !== false,
+        autoAdvance: true,
+      });
+    }, 1200);
+  }
+
+  function renderDraftSpotlightCard(pick, mode, pickIndex = 0, options = {}) {
+    if (!els.draftSpotlight) return;
+    const {
+      allowConfetti = false,
+      autoAdvance = true,
+      eyebrowOverride = null,
+      playerTextOverride = null,
+      photoOverride = null,
+      metaPills = null,
+      displayMs = null,
+    } = options;
 
     const teamInfo = resolveTeam(pick.team);
     const color = teamColor(teamColorKey(teamInfo));
@@ -3388,7 +3467,7 @@
 
     const photo = document.createElement("div");
     photo.className = "draft-spotlight__photo";
-    const image = draftImageForPick(pick);
+    const image = photoOverride || draftImageForPick(pick);
     if (image) photo.style.backgroundImage = `url(${image})`;
     else setLogo(photo, teamInfo.logoKey);
 
@@ -3396,39 +3475,53 @@
     const eyebrow = document.createElement("div");
     eyebrow.className = "draft-spotlight__eyebrow";
     eyebrow.textContent =
-      mode === "clock" ? `${formatDraftPickLabel(pick)} • On the clock` : formatDraftPickLabel(pick);
+      eyebrowOverride ||
+      (mode === "clock" ? `${formatDraftPickLabel(pick)} • On the clock` : formatDraftPickLabel(pick));
 
     const team = document.createElement("div");
     team.className = "draft-spotlight__team";
     const logo = document.createElement("div");
     logo.className = "draft-spotlight__team-logo";
     setLogo(logo, teamInfo.logoKey);
-    const teamName = document.createElement("span");
-    teamName.textContent = teamInfo.displayName || "Team";
+    const teamLink = document.createElement("a");
+    teamLink.className = "team-link";
+    teamLink.href = teamPageUrl(teamInfo);
+    teamLink.textContent = teamInfo.displayName || "Team";
+    teamLink.addEventListener("click", (e) => e.stopPropagation());
     team.appendChild(logo);
-    team.appendChild(teamName);
+    team.appendChild(teamLink);
 
-    const player = document.createElement("div");
-    player.className = "draft-spotlight__player";
-    player.textContent =
-      mode === "clock"
+    const playerName = String(pick.player || "").trim();
+    const playerEl =
+      mode !== "clock" && playerName
+        ? buildPlayerLink(playerName, teamInfo.canonicalKey, "draft-spotlight__player")
+        : document.createElement("div");
+    playerEl.classList.add("draft-spotlight__player");
+    playerEl.textContent =
+      playerEl.textContent ||
+      playerTextOverride ||
+      (mode === "clock"
         ? `${teamInfo.displayName || pick.team || "Team"} is on the clock`
-        : pick.player || "Pick incoming…";
+        : playerName || "Pick incoming…");
 
     const meta = document.createElement("div");
     meta.className = "draft-spotlight__meta";
-    meta.appendChild(buildDraftPill(teamInfo.displayName || "Team"));
-    if (pick.position) meta.appendChild(buildDraftPill(pick.position));
-    if (pick.traded || pick.fromTeam)
-      meta.appendChild(buildDraftPill(pick.fromTeam ? `Via ${pick.fromTeam}` : "Traded pick"));
-    if (mode === "clock") meta.appendChild(buildDraftPill("On the clock"));
-
-    const noteText = pick.note || "";
-    if (noteText) meta.appendChild(buildDraftPill(noteText));
+    const pills =
+      metaPills ||
+      [
+        buildDraftPill(teamInfo.displayName || "Team"),
+        pick.position ? buildDraftPill(pick.position) : null,
+        pick.traded || pick.fromTeam
+          ? buildDraftPill(pick.fromTeam ? `Via ${pick.fromTeam}` : "Traded pick")
+          : null,
+        mode === "clock" ? buildDraftPill("On the clock") : null,
+        pick.note ? buildDraftPill(pick.note) : null,
+      ].filter(Boolean);
+    pills.forEach((pill) => meta.appendChild(pill));
 
     body.appendChild(eyebrow);
     body.appendChild(team);
-    body.appendChild(player);
+    body.appendChild(playerEl);
     body.appendChild(meta);
 
     card.appendChild(photo);
@@ -3440,37 +3533,39 @@
 
     state.draftSpotlightKey = draftPickKey(pick, pickIndex);
     state.draftSpotlightMode = mode;
+    state.draftSpotlightActive = mode === "selection" || mode === "pick-in";
 
-    if (mode === "selection") {
-      state.draftSpotlightActive = true;
+    if (allowConfetti) {
       launchConfetti(color, {
         allowWhenHidden: false,
         allowRepeat: true,
         particleCount: 150,
-        decayFrames: 170,
+        decayFrames: 230,
         allowedTabId: "tab-draft",
       });
-
-      if (state.draftSpotlightTimer) clearTimeout(state.draftSpotlightTimer);
-      state.draftSpotlightTimer = setTimeout(() => {
-        card.style.transition = "opacity 0.35s ease, transform 0.35s ease";
-        card.style.opacity = "0";
-        card.style.transform = "translateY(10px)";
-        setTimeout(() => {
-          if (els.draftSpotlight?.contains(card)) els.draftSpotlight.removeChild(card);
-          state.draftSpotlightActive = false;
-          state.draftSpotlightTimer = null;
-          state.draftSpotlightMode = null;
-          state.draftSpotlightKey = null;
-          if (state.draftAnnouncementQueue.length) playNextDraftAnnouncement();
-          else ensureDraftSpotlight();
-        }, 350);
-      }, 6200);
-    } else {
-      if (state.draftSpotlightTimer) clearTimeout(state.draftSpotlightTimer);
-      state.draftSpotlightTimer = null;
-      state.draftSpotlightActive = false;
     }
+
+    if (state.draftSpotlightTimer) clearTimeout(state.draftSpotlightTimer);
+    if (!autoAdvance) {
+      state.draftSpotlightTimer = null;
+      return;
+    }
+
+    const displayDuration = displayMs ?? (allowConfetti ? 6200 : 4200);
+    state.draftSpotlightTimer = setTimeout(() => {
+      card.style.transition = "opacity 0.35s ease, transform 0.35s ease";
+      card.style.opacity = "0";
+      card.style.transform = "translateY(10px)";
+      setTimeout(() => {
+        if (els.draftSpotlight?.contains(card)) els.draftSpotlight.removeChild(card);
+        state.draftSpotlightActive = false;
+        state.draftSpotlightTimer = null;
+        state.draftSpotlightMode = null;
+        state.draftSpotlightKey = null;
+        if (state.draftAnnouncementQueue.length) playNextDraftAnnouncement();
+        else ensureDraftSpotlight();
+      }, 350);
+    }, displayDuration);
   }
 
   function buildDraftPill(text) {
@@ -3498,9 +3593,6 @@
       return false;
     });
 
-    if (!prevMap.size && updates.length > 1) {
-      return [updates[updates.length - 1]];
-    }
     return updates;
   }
 
@@ -4717,29 +4809,40 @@
       y: -Math.random() * canvas.height,
       size: 6 + Math.random() * 6,
       rotation: Math.random() * Math.PI * 2,
-      speed: 2 + Math.random() * 3,
-      drift: -2 + Math.random() * 4,
+      vx: -2 + Math.random() * 4,
+      vy: 1 + Math.random() * 3,
+      rotationSpeed: (Math.random() * 0.05 + 0.02) * (Math.random() > 0.5 ? 1 : -1),
       color,
     }));
 
+    const gravity = 0.12;
+    const maxFrames = Math.max(decayFrames, 220);
     let frame = 0;
 
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let alive = false;
       pieces.forEach((p) => {
+        p.vy = Math.min(p.vy + gravity, 7);
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rotation += p.rotationSpeed;
+
+        const fadeStart = canvas.height * 0.7;
+        const alpha =
+          p.y < fadeStart ? 1 : Math.max(0, 1 - (p.y - fadeStart) / (canvas.height * 0.35));
         ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(p.rotation);
+        ctx.globalAlpha = alpha;
         ctx.fillStyle = p.color;
         ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
         ctx.restore();
 
-        p.y += p.speed;
-        p.x += p.drift;
-        p.rotation += 0.05;
+        if (p.y - p.size < canvas.height + 24) alive = true;
       });
       frame += 1;
-      if (frame < decayFrames) requestAnimationFrame(draw);
+      if (alive && frame < maxFrames) requestAnimationFrame(draw);
       else document.body.removeChild(canvas);
     }
     requestAnimationFrame(draw);
