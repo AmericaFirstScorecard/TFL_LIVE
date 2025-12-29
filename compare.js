@@ -5,6 +5,21 @@
   const SCHEDULE_CSV_URL =
     "https://docs.google.com/spreadsheets/d/e/2PACX-1vRXwm2d_zRf_4ecp0Czfmd5IRz92bzXLmQ3aY0X0aJ56Ua_vQjMrB2I7yCLYgLR48wLwDuGfjURL6jN/pub?gid=0&single=true&output=csv";
 
+  const MVP_WEIGHTS = {
+    passEfficiency: 2.4,
+    accuracy: 0.3,
+    passYards: 0.35,
+    skillYards: 0.65,
+    passTouchdown: 14,
+    skillTouchdown: 18,
+    returnTouchdown: 22,
+    turnover: -10,
+    defensive: 1.2,
+    win: 1.5,
+    winPct: 12,
+    versatility: 8,
+  };
+
   const TEAM_CODE_MAP = {
     "0": { name: "Louisville Cardinals", logo: "cards" },
     "1": { name: "Dallas Cowboys", logo: "cowboys" },
@@ -616,7 +631,7 @@
         const standing = lookupStanding(standingsMap, rec.team || roster.get(rec.player)?.team);
         const wins = standing?.wins ?? 0;
         const winPct = standing?.winPct ?? null;
-        const { score: mvpScore, defScore } = computeMvpScore(rec, wins);
+        const { score: mvpScore, defScore } = computeMvpScore(rec, wins, winPct);
         return {
           ...rec,
           team: roster.get(rec.player)?.team || rec.team || "Team",
@@ -817,15 +832,46 @@
     return map;
   }
 
-  function computeMvpScore(rec, wins) {
+  function computeMvpScore(rec, wins, winPct) {
     const defScore =
       (rec.tackles || 0) + (rec.defInt || 0) * 5 + (rec.sacks || 0) * 4 + (rec.defTd || 0) * 20;
+    const completionRate =
+      rec.compPct ??
+      (rec.attempts ? (((rec.completions || 0) / rec.attempts) * 100 || null) : null);
+    const passEfficiency = (rec.passRating || 0) * MVP_WEIGHTS.passEfficiency;
+    const accuracyBonus = completionRate != null ? completionRate * MVP_WEIGHTS.accuracy : 0;
+    const passingVolume = (rec.yards || 0) * MVP_WEIGHTS.passYards;
+
+    const rushingYards = (rec.rushYards || 0) * MVP_WEIGHTS.skillYards;
+    const receivingYards = (rec.recvYards || 0) * MVP_WEIGHTS.skillYards;
+
+    const passTouchdowns = (rec.passTd || 0) * MVP_WEIGHTS.passTouchdown;
+    const returnTouchdowns = (rec.returnTd || 0) * MVP_WEIGHTS.returnTouchdown;
+    const skillTouchdowns =
+      rec.totalTd != null
+        ? Math.max(0, rec.totalTd - (rec.returnTd || 0))
+        : (rec.rushTd || 0) + (rec.recvTd || 0);
+    const scoringImpact = skillTouchdowns * MVP_WEIGHTS.skillTouchdown + passTouchdowns + returnTouchdowns;
+
+    const turnoverPenalty = (rec.interceptions || 0) * MVP_WEIGHTS.turnover;
+    const defensiveImpact = defScore * MVP_WEIGHTS.defensive;
+    const versatilitySources = [rec.passRating, rec.rushYards, rec.recvYards, defScore].filter(
+      (val) => (val ?? 0) > 0
+    ).length;
+    const versatilityBonus = Math.max(0, versatilitySources - 1) * MVP_WEIGHTS.versatility;
+    const winScore =
+      (wins || 0) * MVP_WEIGHTS.win + (winPct != null ? winPct * MVP_WEIGHTS.winPct : 0);
     const score =
-      (rec.passRating || 0) * 2 +
-      (rec.rushYards || 0) * 1 +
-      (rec.recvYards || 0) * 1 +
-      defScore * 1 +
-      (wins || 0) * 2;
+      passEfficiency +
+      accuracyBonus +
+      passingVolume +
+      rushingYards +
+      receivingYards +
+      scoringImpact +
+      turnoverPenalty +
+      defensiveImpact +
+      versatilityBonus +
+      winScore;
 
     return { score, defScore };
   }
