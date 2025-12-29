@@ -12,6 +12,7 @@
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vRXwm2d_zRf_4ecp0Czfmd5IRz92bzXLmQ3aY0X0aJ56Ua_vQjMrB2I7yCLYgLR48wLwDuGfjURL6jN/pub?gid=0&single=true&output=csv";
 
   const POLL_MS = 30_000;
+  const DRAFT_PICK_IN_DELAY_MS = 15_000;
 
   const MIN_DISPLAY_PROB = 0.01;
   const MAX_DISPLAY_PROB = 0.99;
@@ -3394,7 +3395,7 @@
     }
     const onClock = computeOnClock(state.draftPicks, state.draftLive);
     if (!onClock) {
-      clearDraftSpotlight();
+      startDraftReplayCycle();
       return;
     }
     if (state.draftSpotlightMode === "clock" && state.draftSpotlightKey === onClock.key) return;
@@ -3455,7 +3456,7 @@
         allowConfetti: state.draftLive !== false,
         autoAdvance: true,
       });
-    }, 1200);
+    }, DRAFT_PICK_IN_DELAY_MS);
   }
 
   function renderDraftSpotlightCard(pick, mode, pickIndex = 0, options = {}) {
