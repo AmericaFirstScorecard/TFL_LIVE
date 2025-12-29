@@ -861,7 +861,9 @@
       const draftUpdates = detectNewDraftPicks(state.draftPicks, draftPicks);
       state.draftPicks = sortDraftPicks(draftPicks);
       state.draftLive = draftLive;
-      if (draftLive !== prevDraftLive) {
+      const draftLiveChanged = draftLive !== prevDraftLive;
+      if (draftLiveChanged) {
+        resetDraftAnnouncements(state.draftPicks);
         state.draftReplayIndex = 0;
         clearDraftSpotlight();
       }
@@ -3334,6 +3336,17 @@
     playNextDraftAnnouncement();
   }
 
+  function resetDraftAnnouncements(picks = []) {
+    state.draftAnnouncementQueue = [];
+    state.draftSeenAnnouncements = new Set();
+    picks
+      .filter((pick) => draftPickHasSelection(pick))
+      .forEach((pick, idx) => {
+        const signature = draftAnnouncementSignature(pick, idx);
+        if (signature) state.draftSeenAnnouncements.add(signature);
+      });
+  }
+
   function playNextDraftAnnouncement() {
     if (state.draftSpotlightActive) return;
     if (state.draftLive === false) {
@@ -3582,6 +3595,7 @@
     );
     const sortedNext = sortDraftPicks(next);
     const updates = sortedNext.filter((pick, idx) => {
+      if (!draftPickHasSelection(pick)) return false;
       const key = draftPickKey(pick, idx);
       pick.key = pick.key || key;
       if (!key) return false;
