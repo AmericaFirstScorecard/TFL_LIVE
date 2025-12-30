@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Season-long state leaders across passing, rushing, receiving, and defense." />
+  <title>TFL State Leaders</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="logos/TFLs.svg">
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="leaders.js"></script>
+</head>
+<body>
+  <div class="page team-page">
+    <div class="team-page__header">
+      <a class="team-page__back" href="index.html">← Back to live dashboard</a>
+      <div>
+        <div class="brand">TFL State Leaders</div>
+        <div class="chart-card__subtitle">Season-to-date standouts across every phase.</div>
+      </div>
+      <div class="badge badge--ghost" id="leadersStatus">Loading…</div>
+    </div>
+
+    <section class="panel">
+      <div class="panel__header">
+        <div>
+          <div class="chart-card__title">State Leaders</div>
+          <div class="chart-card__subtitle">Automatically synced from the main stat workbook</div>
+        </div>
+      </div>
+
+      <div class="state state--loading" id="leadersLoading">Loading stat workbook…</div>
+      <div class="state state--error" id="leadersError" hidden>Unable to load stat workbook right now.</div>
+      <div class="state state--empty" id="leadersEmpty" hidden>No leaders found. Check back soon.</div>
+      <div class="leaders-grid" id="leadersGrid" hidden></div>
+    </section>
+  </div>
+</body>
+</html>
