@@ -15,8 +15,15 @@
   const LEADER_VIEWS = [
     {
       key: "passing",
+      icon: "🎯",
       title: "Passing leaders",
       description: "Most productive passers by yards, TDs, and rating.",
+      eyebrow: "Aerial attack",
+      spotlightStats: [
+        { label: "Yards", key: "yards" },
+        { label: "TD", key: "passTd" },
+        { label: "Rating", key: "passRating", format: (v) => formatNumber(v, 1) },
+      ],
       limit: 10,
       columns: [
         { header: "#", type: "rank" },
@@ -36,8 +43,15 @@
     },
     {
       key: "rushing",
+      icon: "⚡",
       title: "Rushing leaders",
       description: "Ground game standouts by yards and touchdowns.",
+      eyebrow: "On the ground",
+      spotlightStats: [
+        { label: "Yards", key: "rushYards" },
+        { label: "Rush TD", key: "rushTd" },
+        { label: "Total TD", key: "totalTd" },
+      ],
       limit: 10,
       columns: [
         { header: "#", type: "rank" },
@@ -56,8 +70,15 @@
     },
     {
       key: "receiving",
+      icon: "📡",
       title: "Receiving leaders",
       description: "Top targets by yardage, scores, and volume.",
+      eyebrow: "Through the air",
+      spotlightStats: [
+        { label: "Yards", key: "recvYards" },
+        { label: "TD", key: "recvTd" },
+        { label: "Catches", key: "catches" },
+      ],
       limit: 10,
       columns: [
         { header: "#", type: "rank" },
@@ -76,8 +97,15 @@
     },
     {
       key: "defense",
+      icon: "🛡️",
       title: "Defensive leaders",
       description: "Disruptors with tackles, sacks, and takeaways.",
+      eyebrow: "Lockdown unit",
+      spotlightStats: [
+        { label: "Tackles", key: "tackles" },
+        { label: "INT", key: "interceptions" },
+        { label: "Sacks", key: "sacks" },
+      ],
       limit: 10,
       columns: [
         { header: "#", type: "rank" },
@@ -151,19 +179,77 @@
     const rows = view.rows?.() || [];
     if (!rows.length) return null;
     const sorted = [...rows].sort(view.sort).slice(0, view.limit || rows.length);
+    const leader = sorted[0];
     const card = document.createElement("div");
     card.className = "leader-card";
     const header = document.createElement("div");
     header.className = "leader-card__header";
+
+    const badge = document.createElement("div");
+    badge.className = "leader-card__eyebrow";
+    badge.textContent = view.eyebrow || "Leaders";
+
+    const titleWrap = document.createElement("div");
+    titleWrap.className = "leader-card__title-row";
+    if (view.icon) {
+      const icon = document.createElement("div");
+      icon.className = "leader-card__icon";
+      icon.textContent = view.icon;
+      titleWrap.appendChild(icon);
+    }
     const title = document.createElement("div");
     title.className = "leader-card__title";
     title.textContent = view.title;
-    const subtitle = document.createElement("div");
-    subtitle.className = "leader-card__subtitle";
-    subtitle.textContent = view.description;
-    header.appendChild(title);
-    header.appendChild(subtitle);
+    titleWrap.appendChild(title);
+    header.appendChild(badge);
+    header.appendChild(titleWrap);
+    if (view.description) {
+      const subtitle = document.createElement("div");
+      subtitle.className = "leader-card__subtitle";
+      subtitle.textContent = view.description;
+      header.appendChild(subtitle);
+    }
     card.appendChild(header);
+
+    if (leader) {
+      const hero = document.createElement("div");
+      hero.className = "leader-card__hero";
+
+      const heroLeft = document.createElement("div");
+      heroLeft.className = "leader-card__hero-left";
+      heroLeft.insertAdjacentHTML("beforeend", playerAvatar(leader.player, lookupRoster(leader.player)?.image));
+      const heroText = document.createElement("div");
+      heroText.className = "leader-card__hero-text";
+      const heroName = document.createElement("div");
+      heroName.className = "leader-card__hero-name";
+      heroName.textContent = leader.player || "Player";
+      const heroTeam = document.createElement("div");
+      heroTeam.className = "leader-card__hero-meta";
+      heroTeam.textContent = lookupRoster(leader.player)?.team || leader.team || "—";
+      heroText.appendChild(heroName);
+      heroText.appendChild(heroTeam);
+      heroLeft.appendChild(heroText);
+      hero.appendChild(heroLeft);
+
+      const heroStats = document.createElement("div");
+      heroStats.className = "leader-card__spotlight";
+      (view.spotlightStats || []).forEach((stat) => {
+        const pill = document.createElement("div");
+        pill.className = "leader-card__pill";
+        const label = document.createElement("div");
+        label.className = "leader-card__pill-label";
+        label.textContent = stat.label;
+        const value = document.createElement("div");
+        value.className = "leader-card__pill-value";
+        const val = leader[stat.key];
+        value.textContent = stat.format ? stat.format(val) : formatNumber(val);
+        pill.appendChild(label);
+        pill.appendChild(value);
+        heroStats.appendChild(pill);
+      });
+      hero.appendChild(heroStats);
+      card.appendChild(hero);
+    }
 
     const table = document.createElement("table");
     table.className = "table table--compact leader-card__table";
