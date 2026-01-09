@@ -2915,8 +2915,8 @@
     summary.innerHTML = `
       <div class="bracket__summary-title">Seeds ranked by league points (P)</div>
       <div class="bracket__summary-body">
-        Top 5 seeds advance. Seed 6 is eliminated. Seeds 4 and 5 play for the Wild Card, and both semi-finalists
-        feed into the Tate Bowl from the left side of the bracket.
+        Top 3 seeds advance. Seed 4 is eliminated. Seed 1 earns a bye directly into the Tate Bowl while Seeds 2 and 3
+        play for the other spot.
       </div>
     `;
     return summary;
@@ -2925,7 +2925,7 @@
   function buildBracketLegend() {
     const legend = document.createElement("div");
     legend.className = "bracket__legend";
-    ["Wild Card", "Semi Final", "Tate Bowl"].forEach((label) => {
+    ["Bye", "Semi Final", "Tate Bowl"].forEach((label) => {
       const stage = document.createElement("div");
       stage.className = "bracket__legend-label";
       stage.textContent = label;
@@ -2948,20 +2948,20 @@
   function buildBracketModel(seeds) {
     const { activeSeeds, eliminatedSeed } = prepareSingleSideSeeds(seeds);
     const normalized = activeSeeds.map((seed) => ({ ...seed, confSeed: seed.seed }));
-    while (normalized.length < 5) normalized.push(buildPlaceholderSeed(normalized.length + 1));
+    while (normalized.length < 3) normalized.push(buildPlaceholderSeed(normalized.length + 1));
 
     return {
       side: buildBracketSideSingle(normalized, "Left Bracket"),
-      final: buildSingleFinalMatch(),
+      final: buildSingleFinalMatch(normalized.find((seed) => seed.confSeed === 1)),
       eliminated: eliminatedSeed,
     };
   }
 
   function prepareSingleSideSeeds(seeds) {
     if (!Array.isArray(seeds)) return { activeSeeds: [], eliminatedSeed: null };
-    const withoutSix = seeds.filter((seed) => seed.seed !== 6);
-    const eliminatedSeed = seeds.find((seed) => seed.seed === 6) || null;
-    return { activeSeeds: withoutSix.slice(0, 5), eliminatedSeed };
+    const withoutFour = seeds.filter((seed) => seed.seed !== 4);
+    const eliminatedSeed = seeds.find((seed) => seed.seed === 4) || null;
+    return { activeSeeds: withoutFour.slice(0, 3), eliminatedSeed };
   }
 
   function buildPlaceholderSeed(confSeed, label = "TBD") {
@@ -2978,24 +2978,10 @@
     return {
       label,
       byeSeed: findSeed(1),
-      wildcard: [
-        {
-          title: "Wild Card",
-          top: findSeed(4),
-          bottom: findSeed(5),
-          note: "Winner advances to Semi Final 1",
-        },
-      ],
+      wildcard: [],
       semifinal: [
         {
-          title: "Semi Final 1",
-          top: findSeed(1),
-          bottom: buildWinnerSeed("Wild Card winner"),
-          note: "Top seed hosts",
-          tag: "Clinched bye",
-        },
-        {
-          title: "Semi Final 2",
+          title: "Semi Final",
           top: findSeed(2),
           bottom: findSeed(3),
         },
@@ -3003,12 +2989,12 @@
     };
   }
 
-  function buildSingleFinalMatch() {
+  function buildSingleFinalMatch(topSeed) {
     return {
       title: "Tate Bowl",
-      top: buildWinnerSeed("Semi Finalist 1"),
-      bottom: buildWinnerSeed("Semi Finalist 2"),
-      note: "Winners of the two semi finals advance here",
+      top: topSeed || buildWinnerSeed("Top seed"),
+      bottom: buildWinnerSeed("Semi Final winner"),
+      note: "Seed 1 awaits the Semi Final winner",
     };
   }
 
@@ -4499,7 +4485,7 @@
     return map;
   }
 
-  function buildSeeds(rows, limit = 5) {
+  function buildSeeds(rows, limit = 4) {
     if (!rows?.length) return [];
     return sortStandings(rows)
       .filter((row) => row.team)

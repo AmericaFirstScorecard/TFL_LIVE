@@ -507,6 +507,7 @@
     workbook.SheetNames.forEach((sheetName) => {
       const seasonLabel = String(sheetName || "").trim();
       if (!seasonLabel) return;
+      if (!shouldIncludeSeasonSheet(seasonLabel)) return;
       const entries = parseSeasonSheet(workbook, sheetName, seasonLabel);
       if (!entries.length) return;
 
@@ -574,6 +575,11 @@
     return match ? parseInt(match[1], 10) : 0;
   }
 
+  function shouldIncludeSeasonSheet(label) {
+    if (/all\s*time/i.test(label)) return true;
+    return /(szn|season)\s*\d*/i.test(label);
+  }
+
   function formatSeasonLabel(label, kind) {
     const raw = String(label || "").trim();
     if (kind === "all-time") return "All time";
@@ -605,6 +611,9 @@
     if (!key) return [];
     const records = [];
 
+    const allTimeEntry = findAllTimeEntry(key);
+    if (allTimeEntry) records.push({ ...allTimeEntry, kind: "all-time" });
+
     (state.seasonStats.order || []).forEach((season) => {
       const seasonRows = state.seasonStats.seasons.get(season) || [];
       const match =
@@ -614,6 +623,14 @@
     });
 
     return records;
+  }
+
+  function findAllTimeEntry(key) {
+    if (state.seasonStats.allTime?.has(key)) return state.seasonStats.allTime.get(key);
+    for (const [nameKey, entry] of state.seasonStats.allTime.entries()) {
+      if (nameKey.includes(key)) return entry;
+    }
+    return null;
   }
 
   function parseMvpWorkbook(buffer) {
