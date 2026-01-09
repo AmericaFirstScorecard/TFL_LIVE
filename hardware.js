@@ -31,6 +31,16 @@
       image: "hardware/yankdix.png",
       recipients: [{type: "team", id: "Dallas Cowboys", display: "Dallas Cowboys"}],
     },
+    {
+      id: "szn10bowl",
+      name: "Season 10 Tate Bowl Trophy",
+      description: "In season 10 the Patriots led by Jack Holiday took their final snap of the season. A tied game Holiday stepped back in the pocket and delivered a dagger pass straight to Cooper Kupp to secure the win against the prestigious Louisville Cardinals.",
+      image: "hardware/szn10bowl.png",
+      recipients: [
+        { type: "player", id: "Focus", display: "Focus" },
+        { type: "player", id: "Jack", display: "Jack" },
+      ],
+    },
   ];
 
   const normalizeKey = (value) => String(value || "").trim().toLowerCase();
