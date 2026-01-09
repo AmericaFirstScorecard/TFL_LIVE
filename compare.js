@@ -493,6 +493,19 @@
       return s === "yes" || s === "y" || s === "true" || s === "1";
     };
 
+    const parseScheduleStats = (raw) => {
+      const rawText = String(raw ?? "").trim();
+      if (!rawText) return null;
+      const cleaned = rawText.includes("///") ? rawText.split("///").slice(-1)[0].trim() : rawText;
+      if (!cleaned || cleaned === "-" || cleaned === "—") return null;
+      try {
+        return JSON.parse(cleaned);
+      } catch (err) {
+        console.warn("[schedule] Unable to parse stats JSON", err);
+        return null;
+      }
+    };
+
     return rows
       .map((row) => {
         const r = normRow(row);
@@ -527,6 +540,7 @@
 
         const scoreHome = toScore(pick(r, ["score home", "home score"]));
         const scoreAway = toScore(pick(r, ["score away", "away score"]));
+        const statsData = parseScheduleStats(pick(r, ["data", "stats", "game data", "game stats"]));
 
         if (!week || !away || !home) return null;
 
@@ -539,6 +553,7 @@
           startTime,
           scoreHome,
           scoreAway,
+          statsData,
         };
       })
       .filter(Boolean);
