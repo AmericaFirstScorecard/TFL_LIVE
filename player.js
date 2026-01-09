@@ -17,8 +17,8 @@
     cards: { name: "Louisville Cardinals", logo: "cards" },
     dal: { name: "Dallas Cowboys", logo: "cowboys" },
     cowboys: { name: "Dallas Cowboys", logo: "cowboys" },
-    nyg: { name: "New York Giants", logo: "giants" },
-    giants: { name: "New York Giants", logo: "giants" },
+    nyg: { name: "New York Giants", logo: "nyg" },
+    giants: { name: "New York Giants", logo: "nyg" },
     bucs: { name: "Tampa Bay Buccaneers", logo: "bucs" },
     buccaneers: { name: "Tampa Bay Buccaneers", logo: "bucs" },
   };
