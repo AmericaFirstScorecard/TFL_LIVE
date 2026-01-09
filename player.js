@@ -11,22 +11,16 @@
   const TEAM_CODE_MAP = {
     "0": { name: "Louisville Cardinals", logo: "cards" },
     "1": { name: "Dallas Cowboys", logo: "cowboys" },
-    "2": { name: "Washington Redskins", logo: "redskins" },
-    "3": { name: "Buffalo Bills", logo: "bills" },
-    "4": { name: "Baltimore Ravens", logo: "ravens" },
-    "5": { name: "New England Patriots", logo: "patriots" },
+    "2": { name: "New York Giants", logo: "giants" },
+    "3": { name: "Tampa Bay Buccaneers", logo: "bucs" },
     lou: { name: "Louisville Cardinals", logo: "cards" },
     cards: { name: "Louisville Cardinals", logo: "cards" },
-    was: { name: "Washington Redskins", logo: "redskins" },
-    redskins: { name: "Washington Redskins", logo: "redskins" },
     dal: { name: "Dallas Cowboys", logo: "cowboys" },
     cowboys: { name: "Dallas Cowboys", logo: "cowboys" },
-    ne: { name: "New England Patriots", logo: "patriots" },
-    patriots: { name: "New England Patriots", logo: "patriots" },
-    bal: { name: "Baltimore Ravens", logo: "ravens" },
-    ravens: { name: "Baltimore Ravens", logo: "ravens" },
-    buf: { name: "Buffalo Bills", logo: "bills" },
-    bills: { name: "Buffalo Bills", logo: "bills" },
+    nyg: { name: "New York Giants", logo: "giants" },
+    giants: { name: "New York Giants", logo: "giants" },
+    bucs: { name: "Tampa Bay Buccaneers", logo: "bucs" },
+    buccaneers: { name: "Tampa Bay Buccaneers", logo: "bucs" },
   };
 
   const MVP_WEIGHTS = {
