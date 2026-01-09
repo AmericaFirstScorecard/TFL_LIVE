@@ -310,6 +310,7 @@
     els.gameDetailScore = id("gameDetailScore");
     els.gameDetailStats = id("gameDetailStats");
     els.gameDetailChart = id("gameDetailChart");
+    els.gameDetailChartCard = id("gameDetailChartCard");
     els.gameDetailChartMeta = id("gameDetailChartMeta");
     els.teamSummary = id("teamSummary");
     els.teamPlayers = id("teamPlayers");
@@ -1013,7 +1014,20 @@
       const s = String(v ?? "").trim().toLowerCase();
       return s === "yes" || s === "y" || s === "true" || s === "1";
     };
-  
+
+    const parseScheduleStats = (raw) => {
+      const rawText = String(raw ?? "").trim();
+      if (!rawText) return null;
+      const cleaned = rawText.includes("///") ? rawText.split("///").slice(-1)[0].trim() : rawText;
+      if (!cleaned || cleaned === "-" || cleaned === "—") return null;
+      try {
+        return JSON.parse(cleaned);
+      } catch (err) {
+        console.warn("[schedule] Unable to parse stats JSON", err);
+        return null;
+      }
+    };
+
     return rows
       .map((row) => {
         const r = normRow(row);
@@ -1054,10 +1068,11 @@
             "time",
           ])
         ).trim();
-  
+
         const scoreHome = toScore(pick(r, ["score home", "home score"]));
         const scoreAway = toScore(pick(r, ["score away", "away score"]));
-  
+        const statsData = parseScheduleStats(pick(r, ["data", "stats", "game data", "game stats"]));
+
         if (!week || !away || !home) return null;
 
         return {
@@ -1070,6 +1085,7 @@
           startTime,
           scoreHome,
           scoreAway,
+          statsData,
         };
       })
       .filter(Boolean);
@@ -1130,13 +1146,14 @@
   function renderScheduleGame(game) {
     const wrap = document.createElement("div");
     wrap.className = "schedule-game";
-  
+
     const teams = document.createElement("div");
     teams.className = "schedule-game__teams";
-  
+
     const completeState = String(game.complete ?? "").trim().toLowerCase(); // "yes" | "no" | "live"
     const gameCode = normalizeGameCode(game.gameCode || game.gameCodeRaw);
     const hasDetails = Boolean(gameCode && matchupFromArchive(gameCode));
+    const hasStats = Boolean(game.statsData && Object.keys(game.statsData || {}).length);
     const isFinal = completeState === "yes";
     const isLive = completeState === "live";
   
@@ -1219,6 +1236,15 @@
       detailBtn.textContent = "DETAILS";
       detailBtn.addEventListener("click", () => openGameDetail(gameCode, game));
       center.appendChild(detailBtn);
+    }
+
+    if (hasStats) {
+      const statsBtn = document.createElement("button");
+      statsBtn.type = "button";
+      statsBtn.className = "pill schedule-game__detail schedule-game__detail--details";
+      statsBtn.textContent = "STATS";
+      statsBtn.addEventListener("click", () => openGameStats(game));
+      center.appendChild(statsBtn);
     }
 
     meta.appendChild(center);
@@ -1312,6 +1338,8 @@
     const metrics = analyzeGame(homeSeries, parsed.snapshots);
     const latest = parsed.snapshots[parsed.snapshots.length - 1] || {};
 
+    setGameDetailChartVisible(true);
+
     if (els.gameDetailTitle) els.gameDetailTitle.textContent = `Game ${normalizedCode}`;
     if (els.gameDetailSubtitle)
       els.gameDetailSubtitle.textContent = `${teamAInfo.displayName} vs ${teamBInfo.displayName}`;
@@ -1340,6 +1368,239 @@
     renderGameDetailStats(stats, metrics, teamAInfo, teamBInfo);
 
     els.gameDetailOverlay.hidden = false;
+  }
+
+  function setGameDetailChartVisible(isVisible) {
+    if (els.gameDetailChartCard) els.gameDetailChartCard.hidden = !isVisible;
+    if (els.gameDetailChart) els.gameDetailChart.hidden = !isVisible;
+  }
+
+  function openGameStats(game) {
+    if (!els.gameDetailOverlay) return;
+    const statsData = game?.statsData;
+    if (!statsData || typeof statsData !== "object") return;
+
+    const teamAInfo = resolveTeam(game.away);
+    const teamBInfo = resolveTeam(game.home);
+    const normalizedCode = normalizeGameCode(game.gameCode || game.gameCodeRaw);
+
+    if (state.gameDetailChart) {
+      state.gameDetailChart.destroy();
+      state.gameDetailChart = null;
+    }
+
+    setGameDetailChartVisible(false);
+
+    if (els.gameDetailTitle) {
+      els.gameDetailTitle.textContent = normalizedCode
+        ? `Game ${normalizedCode}`
+        : `${teamAInfo.displayName} vs ${teamBInfo.displayName}`;
+    }
+    if (els.gameDetailSubtitle) els.gameDetailSubtitle.textContent = "Game stats";
+
+    const completeState = String(game.complete ?? "").trim().toLowerCase();
+    const isFinal = completeState === "yes";
+    const badgeText = isFinal ? "Final" : completeState === "live" ? "Live" : "Scheduled";
+    if (els.gameDetailBadge) {
+      els.gameDetailBadge.textContent = badgeText;
+      els.gameDetailBadge.className = `badge ${isFinal ? "badge--ghost" : ""}`.trim();
+    }
+
+    if (els.gameDetailScore) {
+      const scoreA = game.scoreAway ?? "—";
+      const scoreB = game.scoreHome ?? "—";
+      els.gameDetailScore.textContent = `${teamAInfo.displayName} ${scoreA} — ${scoreB} ${teamBInfo.displayName}`;
+    }
+
+    if (els.gameDetailChartMeta) {
+      els.gameDetailChartMeta.textContent = "Stats from schedule data";
+    }
+
+    renderScheduleStats(statsData);
+    els.gameDetailOverlay.hidden = false;
+  }
+
+  function renderScheduleStats(statsData) {
+    if (!els.gameDetailStats) return;
+    els.gameDetailStats.innerHTML = "";
+
+    const players = Object.values(statsData || {})
+      .map((entry) => {
+        const other = entry?.other || {};
+        return {
+          name: other.display || other.name || other.idstr || "Unknown player",
+          team: other.team && other.team !== "nil" ? other.team : "",
+          qb: entry?.qb || {},
+          rb: entry?.rb || {},
+          wr: entry?.wr || {},
+          def: entry?.def || {},
+          db: entry?.db || {},
+          k: entry?.k || {},
+        };
+      })
+      .filter((player) => player.name);
+
+    if (!players.length) {
+      const empty = document.createElement("div");
+      empty.className = "game-stat-empty";
+      empty.textContent = "No stats available for this game.";
+      els.gameDetailStats.appendChild(empty);
+      return;
+    }
+
+    const toNum = (value) => {
+      const n = parseNumber(value);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const hasAny = (...values) => values.some((v) => {
+      const n = parseNumber(v);
+      return Number.isFinite(n) && n !== 0;
+    });
+
+    const formatLine = (label, text) => {
+      const row = document.createElement("div");
+      row.className = "game-stat-card__row";
+      const tag = document.createElement("div");
+      tag.className = "game-stat-card__label";
+      tag.textContent = label;
+      const value = document.createElement("div");
+      value.className = "game-stat-card__value";
+      value.textContent = text;
+      row.appendChild(tag);
+      row.appendChild(value);
+      return row;
+    };
+
+    const frag = document.createDocumentFragment();
+
+    players.forEach((player) => {
+      const qbComp = toNum(player.qb.comp);
+      const qbInc = toNum(player.qb.inc);
+      const qbAtt = qbComp + qbInc;
+      const qbYds = toNum(player.qb.yds);
+      const qbTd = toNum(player.qb.td);
+      const qbInt = toNum(player.qb.int);
+
+      const rbAtt = toNum(player.rb.att);
+      const rbYds = toNum(player.rb.yds);
+      const rbTd = toNum(player.rb.td);
+
+      const wrCatch = toNum(player.wr.catch);
+      const wrTgt = toNum(player.wr.tgt);
+      const wrYds = toNum(player.wr.yds);
+      const wrTd = toNum(player.wr.td);
+
+      const defTack = toNum(player.def.tack);
+      const defSack = toNum(player.def.sack);
+      const defInt = toNum(player.def.int);
+      const defFfum = toNum(player.def.ffum);
+
+      const dbInt = toNum(player.db.int);
+      const dbDefl = toNum(player.db.defl);
+      const dbYds = toNum(player.db.yds_allow);
+      const dbTd = toNum(player.db.td_allow);
+
+      const kGood = toNum(player.k.good);
+      const kAtt = toNum(player.k.att);
+      const kPatGood = toNum(player.k.pat_good);
+      const kPatAtt = toNum(player.k.pat_att);
+
+      if (
+        !hasAny(
+          qbComp,
+          qbInc,
+          qbYds,
+          qbTd,
+          qbInt,
+          rbAtt,
+          rbYds,
+          rbTd,
+          wrCatch,
+          wrTgt,
+          wrYds,
+          wrTd,
+          defTack,
+          defSack,
+          defInt,
+          defFfum,
+          dbInt,
+          dbDefl,
+          dbYds,
+          dbTd,
+          kGood,
+          kAtt,
+          kPatGood,
+          kPatAtt
+        )
+      ) {
+        return;
+      }
+
+      const card = document.createElement("div");
+      card.className = "game-stat-card";
+      const header = document.createElement("div");
+      header.className = "game-stat-card__header";
+
+      const name = document.createElement("div");
+      name.className = "game-stat-card__name";
+      name.textContent = player.name;
+      header.appendChild(name);
+
+      if (player.team) {
+        const team = document.createElement("div");
+        team.className = "game-stat-card__team";
+        team.textContent = player.team;
+        header.appendChild(team);
+      }
+
+      const rows = document.createElement("div");
+      rows.className = "game-stat-card__rows";
+
+      if (hasAny(qbComp, qbInc, qbYds, qbTd, qbInt)) {
+        const qbLine = `${formatCount(qbComp)}/${formatCount(qbAtt)} • ${formatCount(qbYds)} yds • ${formatCount(qbTd)} TD • ${formatCount(qbInt)} INT`;
+        rows.appendChild(formatLine("QB", qbLine));
+      }
+
+      if (hasAny(rbAtt, rbYds, rbTd)) {
+        const rbLine = `${formatCount(rbAtt)} att • ${formatCount(rbYds)} yds • ${formatCount(rbTd)} TD`;
+        rows.appendChild(formatLine("RB", rbLine));
+      }
+
+      if (hasAny(wrCatch, wrTgt, wrYds, wrTd)) {
+        const wrLine = `${formatCount(wrCatch)}/${formatCount(wrTgt)} • ${formatCount(wrYds)} yds • ${formatCount(wrTd)} TD`;
+        rows.appendChild(formatLine("WR", wrLine));
+      }
+
+      if (hasAny(defTack, defSack, defInt, defFfum)) {
+        const defLine = `${formatCount(defTack)} tk • ${formatCount(defSack)} sk • ${formatCount(defInt)} INT • ${formatCount(defFfum)} FF`;
+        rows.appendChild(formatLine("DEF", defLine));
+      }
+
+      if (hasAny(dbInt, dbDefl, dbYds, dbTd)) {
+        const dbLine = `${formatCount(dbInt)} INT • ${formatCount(dbDefl)} defl • ${formatCount(dbYds)} yds • ${formatCount(dbTd)} TD`;
+        rows.appendChild(formatLine("DB", dbLine));
+      }
+
+      if (hasAny(kGood, kAtt, kPatGood, kPatAtt)) {
+        const kLine = `FG ${formatCount(kGood)}/${formatCount(kAtt)} • PAT ${formatCount(kPatGood)}/${formatCount(kPatAtt)}`;
+        rows.appendChild(formatLine("K", kLine));
+      }
+
+      card.appendChild(header);
+      card.appendChild(rows);
+      frag.appendChild(card);
+    });
+
+    if (!frag.childNodes.length) {
+      const empty = document.createElement("div");
+      empty.className = "game-stat-empty";
+      empty.textContent = "No stats available for this game.";
+      els.gameDetailStats.appendChild(empty);
+      return;
+    }
+
+    els.gameDetailStats.appendChild(frag);
   }
 
   function renderGameDetailStats(stats, metrics, teamAInfo, teamBInfo) {
