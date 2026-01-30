@@ -27,15 +27,15 @@
     "0": { name: "Louisville Cardinals", logo: "cards" },
     "1": { name: "Dallas Cowboys", logo: "cowboys" },
     "2": { name: "New York Giants", logo: "giants" },
-    "3": { name: "Tampa Bay Buccaneers", logo: "bucs" },
+    "3": { name: "Buffalo Bills", logo: "bills" },
     lou: { name: "Louisville Cardinals", logo: "cards" },
     cards: { name: "Louisville Cardinals", logo: "cards" },
     dal: { name: "Dallas Cowboys", logo: "cowboys" },
     cowboys: { name: "Dallas Cowboys", logo: "cowboys" },
     nyg: { name: "New York Giants", logo: "nyg" },
     giants: { name: "New York Giants", logo: "nyg" },
-    bucs: { name: "Tampa Bay Buccaneers", logo: "bucs" },
-    buccaneers: { name: "Tampa Bay Buccaneers", logo: "bucs" },
+    bills: { name: "Buffalo Bills", logo: "bills" },
+    buffalo: { name: "Buffalo Bills", logo: "bills" },
   };
 
   const LOGO_MAP = buildLogoMap();
@@ -51,9 +51,9 @@
     nyg: "nyg",
     giants: "nyg",
     "new york giants": "nyg",
-    tampa: "bucs",
-    bucs: "bucs",
-    "tampa bay buccaneers": "bucs",
+    buf: "bills",
+    bills: "bills",
+    "Buffalo Bills": "bills",
   };
 
   const TEAM_COLORS = {
@@ -66,9 +66,9 @@
     giants: "#0B2265",
     nyg: "#0B2265",
     "new york giants": "#0B2265",
-    bucs: "#550000",
-    tampa: "#550000",
-    "tampa bay buccaneers": "#550000",
+    bills: "#C60C30",
+    buffalo: "#C60C30",
+    "Buffalo Bills": "#C60C30",
   };
 
   const MVP_WEIGHTS = {
