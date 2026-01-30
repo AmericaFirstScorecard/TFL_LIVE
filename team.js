@@ -16,8 +16,8 @@
     cowboys: { name: "Dallas Cowboys", logo: "cowboys" },
     nyg: { name: "New York Giants", logo: "nyg" },
     giants: { name: "New York Giants", logo: "nyg" },
-    bucs: { name: "Tampa Bay Buccaneers", logo: "bucs" },
-    buccaneers: { name: "Tampa Bay Buccaneers", logo: "bucs" },
+    buf: { name: "Buffalo Bills", logo: "bills" },
+    bills: { name: "Buffalo Bills", logo: "bills" },
   };
 
   const STANDINGS_ALIASES = {
@@ -31,9 +31,9 @@
     nyg: "nyg",
     giants: "nyg",
     "new york giants": "nyg",
-    tampa: "bucs",
-    bucs: "bucs",
-    "tampa bay buccaneers": "bucs",
+    buf: "bills",
+    bills: "bill",
+    "buffalo bills": "bills",
   };
 
   const MVP_WEIGHTS = {
