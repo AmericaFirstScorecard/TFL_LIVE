@@ -53,7 +53,7 @@
     "new york giants": "nyg",
     buf: "bills",
     bills: "bills",
-    "Buffalo Bills": "bills",
+    "buffalo bills": "bills",
   };
 
   const TEAM_COLORS = {
